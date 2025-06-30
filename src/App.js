@@ -110,12 +110,20 @@ const callGeminiAPI = async (payload, setNotification) => {
 
 // --- Smart OCR Parsing with Gemini ---
 const parseInvoiceWithGemini = async (imageData, setNotification) => {
-    const prompt = `You are an expert receipt parser. Analyze the following receipt image and extract the information into the specified JSON format. Infer the currency from symbols like $, £, €, ₹ or codes like USD, EUR, INR. Default to USD if no currency is found.`;
+    const prompt = `You are an expert receipt parser. Analyze the following receipt image and extract the information into the specified JSON format.
+    - shortDescription: A 2-3 line summary of the purchase, including key items or the purpose of the expense.
+    - vendorName: If the name is unclear, infer a type like "Restaurant" or "Gas Station".
+    - totalAmount: The FINAL amount paid, after all discounts and taxes.
+    - currency: Infer the 3-letter currency code (e.g., USD, INR). Default to USD if unsure.
+    - invoiceDate: Default to today's date (${new Date().toISOString().split('T')[0]}) if not found.
+    - lineItems: For each item, find the final price paid, considering any discounts applied to that specific item.
+    `;
     
     const schema = {
         type: "OBJECT",
         properties: {
             vendorName: { type: "STRING" },
+            shortDescription: { type: "STRING" },
             totalAmount: { type: "NUMBER" },
             invoiceDate: { type: "STRING", description: "Date in YYYY-MM-DD format" },
             currency: { type: "STRING", description: "3-letter currency code like USD, EUR, INR" },
@@ -133,7 +141,7 @@ const parseInvoiceWithGemini = async (imageData, setNotification) => {
                 }
             }
         },
-        required: ["vendorName", "totalAmount", "invoiceDate", "category"]
+        required: ["vendorName", "totalAmount", "invoiceDate", "category", "shortDescription"]
     };
 
     const payload = {
@@ -161,11 +169,19 @@ const parseInvoiceWithGemini = async (imageData, setNotification) => {
 
 // --- Currency Symbol Helper ---
 const getCurrencySymbol = (currencyCode) => {
-    const symbols = {
-        'USD': '$', 'EUR': '€', 'GBP': '£', 'INR': '₹', 'JPY': '¥', 'CAD': '$', 'AUD': '$'
-    };
+    const symbols = { 'USD': '$', 'EUR': '€', 'GBP': '£', 'INR': '₹', 'JPY': '¥', 'CAD': '$', 'AUD': '$' };
     return symbols[currencyCode] || '$';
 };
+
+// --- Animated Background ---
+const AnimatedBackground = () => (
+    <div className="fixed top-0 left-0 w-full h-full -z-10 overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full bg-gray-100" />
+        <div className="absolute w-[1000px] h-[1000px] bg-gradient-to-br from-white via-gray-200 to-gray-300 rounded-full animate-pulse-slow -top-1/2 -left-1/2" />
+        <div className="absolute w-[800px] h-[800px] bg-gradient-to-tl from-white via-gray-200 to-gray-300 rounded-full animate-pulse-slow-reverse -bottom-1/2 -right-1/2" />
+    </div>
+);
+
 
 // --- Main App Component ---
 const App = () => {
@@ -206,6 +222,7 @@ const LoginScreen = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4 antialiased">
+             <AnimatedBackground />
              <div className="max-w-md w-full mx-auto">
                 <div className="text-center mb-8">
                     <h1 className="text-5xl font-bold text-black tracking-wide">Welcome</h1>
@@ -269,6 +286,7 @@ const MainApp = ({ user }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.3 }}
+                className="h-full"
             >
                 {
                     {
@@ -285,6 +303,7 @@ const MainApp = ({ user }) => {
 
     return (
         <div className="bg-gray-100 text-gray-900 font-sans h-screen flex flex-col antialiased subpixel-antialiased" style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+            <AnimatedBackground />
             <Notification notification={notification} onDismiss={() => setNotification(null)} />
             <main className="flex-1 overflow-y-auto p-4 md:p-6">{renderScreen()}</main>
             <BottomNavBar activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
@@ -349,14 +368,17 @@ const DashboardScreen = ({ invoices, setNotification }) => {
             <h1 className="text-4xl font-bold text-black tracking-wide">Dashboard</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                 <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-semibold flex items-center text-black"><Sparkles size={20} className="mr-2 text-black"/>Smart Insights</h2>
+                    <h2 className="text-lg font-semibold flex items-center text-black">
+                        <Sparkles size={20} className="mr-2 text-black drop-shadow-[0_0_5px_rgba(0,0,0,0.5)] animate-pulse"/>
+                        Smart Insights
+                    </h2>
                     <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={getDashboardInsights} disabled={isInsightsLoading} className="text-black hover:text-gray-700 disabled:opacity-50">
                         <RefreshCw size={16} className={isInsightsLoading ? 'animate-spin' : ''}/>
                     </motion.button>
                 </div>
-                <div className="text-sm text-gray-700 space-y-2">
+                <div className="text-sm text-gray-700 space-y-3 leading-relaxed">
                     {isInsightsLoading ? <div className="flex items-center space-x-2 text-gray-500"><Loader2 className="animate-spin" size={16}/><span>Analyzing...</span></div>
-                        : insights.length > 0 ? insights.map((insight, index) => <p key={index}>• {insight}</p>)
+                        : insights.length > 0 ? insights.map((insight, index) => <div key={index} className="flex items-start"><span className="mr-2 mt-1 opacity-70">•</span><p>{insight}</p></div>)
                         : <p className="text-gray-500">Scan more invoices to unlock personalized insights!</p>
                     }
                 </div>
@@ -510,11 +532,12 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification }) => {
                         invoiceDate: structuredData.invoiceDate || new Date().toISOString().split('T')[0],
                         category: structuredData.category || 'Other', lineItems: structuredData.lineItems || [],
                         currency: structuredData.currency || 'USD',
+                        shortDescription: structuredData.shortDescription || ''
                     });
                     setNotification({ text: "Invoice details extracted!", type: "success" });
                 } else {
                     setNotification({ text: "AI couldn't extract details. Please enter manually.", type: 'error' });
-                    setInvoiceData({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], currency: 'USD' });
+                    setInvoiceData({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], currency: 'USD', shortDescription: '' });
                 }
                 setIsProcessing(false);
             };
@@ -590,6 +613,22 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification }) => {
     );
 };
 
+const MarkdownRenderer = ({ text }) => {
+    const renderText = () => {
+        const parts = text.split(/(\*\*.*?\*\*|\*.*?\*)/g);
+        return parts.map((part, index) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                return <strong key={index}>{part.slice(2, -2)}</strong>;
+            }
+            if (part.startsWith('*') && part.endsWith('*')) {
+                return <em key={index}>{part.slice(1, -1)}</em>;
+            }
+            return part;
+        });
+    };
+    return <p className="text-sm whitespace-pre-wrap">{renderText()}</p>;
+};
+
 const ChatScreen = ({ invoices, setNotification }) => {
     const [messages, setMessages] = useState([]);
     const [userInput, setUserInput] = useState('');
@@ -607,7 +646,7 @@ const ChatScreen = ({ invoices, setNotification }) => {
         const question = userInput;
         setUserInput('');
         setIsLoading(true);
-        const prompt = `You are a helpful financial assistant AI. Answer questions about spending, and perform calculations like splitting a bill. Base your answers ONLY on the provided JSON data of invoices. If the answer isn't in the data, say so. For calculations, provide a clear breakdown.\n\nInvoice Data:\n${JSON.stringify(invoices)}\n\nUser's request: "${question}"`;
+        const prompt = `You are a helpful financial assistant AI. Answer questions about spending, and perform calculations like splitting a bill. Base your answers ONLY on the provided JSON data of their invoices and the conversation history. If the answer isn't in the data, say so. For calculations, provide a clear breakdown. Use markdown for formatting like **bold**.\n\nConversation History:\n${JSON.stringify(messages)}\n\nInvoice Data:\n${JSON.stringify(invoices)}\n\nUser's latest request: "${question}"`;
         const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
         const aiResponse = await callGeminiAPI(payload, setNotification);
         setMessages([...newMessages, { text: aiResponse || "Sorry, I couldn't process that.", role: 'ai' }]);
@@ -625,7 +664,7 @@ const ChatScreen = ({ invoices, setNotification }) => {
                     </div>
                 )}
                 <AnimatePresence>
-                {messages.map((msg, index) => (<motion.div key={index} initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}><p className="text-sm whitespace-pre-wrap">{msg.text}</p></div></motion.div>))}
+                {messages.map((msg, index) => (<motion.div key={index} initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}><MarkdownRenderer text={msg.text} /></div></motion.div>))}
                 </AnimatePresence>
                 {isLoading && (<motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="flex justify-start"><div className="max-w-xs p-3 rounded-2xl bg-gray-200"><Loader2 className="animate-spin text-black"/></div></motion.div>)}
             </div>
@@ -654,33 +693,63 @@ const ProfileScreen = ({ user }) => {
 };
 
 const BottomNavBar = ({ activeScreen, setActiveScreen }) => {
-    const navItems = [ { name: 'Dashboard', icon: LineChart }, { name: 'Invoices', icon: FileText }, { name: 'Scan', icon: Plus }, { name: 'Chat', icon: MessageCircle }, { name: 'Profile', icon: Settings } ];
-    return (
-        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30">
-            <div className="flex justify-around items-center max-w-lg mx-auto h-20">
-                {navItems.map((item) => {
-                    const isActive = activeScreen === item.name;
-                    if (item.name === 'Scan') {
-                        return (
-                            <div key={item.name} className="w-20 flex justify-center">
-                                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className="-mt-12 bg-black text-white rounded-full w-20 h-20 flex items-center justify-center shadow-xl shadow-black/30 ring-4 ring-white/20">
-                                    <item.icon size={32} />
-                                </motion.button>
-                            </div>
-                        );
-                    }
-                    return (
-                        <div key={item.name} className="w-20">
-                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className={`flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-black' : 'text-gray-500 hover:text-black'}`}>
-                                <item.icon size={24} />
-                                {isActive && <motion.div layoutId="active-pill" className="absolute bottom-2 w-2 h-2 bg-black rounded-full"/>}
-                            </motion.button>
-                        </div>
-                    );
-                })}
-            </div>
-        </motion.div>
-    );
+  const navItems = [
+      { name: 'Dashboard', icon: LineChart },
+      { name: 'Invoices', icon: FileText },
+      { name: 'Scan', icon: Plus },
+      { name: 'Chat', icon: MessageCircle },
+      { name: 'Profile', icon: Settings }
+  ];
+
+  return (
+      <motion.div 
+          initial={{ y: 100 }} 
+          animate={{ y: 0 }} 
+          transition={{ type: "spring", stiffness: 500, damping: 50 }} 
+          className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30"
+      >
+          <div className="flex justify-around items-center max-w-lg mx-auto h-20">
+              {navItems.map((item) => {
+                  const isActive = activeScreen === item.name;
+                  
+                  if (item.name === 'Scan') {
+                      return (
+                          <div key={item.name} className="w-20 flex justify-center">
+                              <motion.button 
+                                  whileHover={{ scale: 1.1 }} 
+                                  whileTap={{ scale: 0.9 }} 
+                                  onClick={() => setActiveScreen(item.name)} 
+                                  className="-mt-12 bg-black text-white rounded-full w-20 h-20 flex items-center justify-center shadow-xl shadow-black/30 ring-4 ring-white/20"
+                              >
+                                  <item.icon size={32} />
+                              </motion.button>
+                          </div>
+                      );
+                  }
+
+                  return (
+                      <div key={item.name} className="w-20 flex justify-center">
+                          <motion.button 
+                              whileHover={{ scale: 1.1 }} 
+                              whileTap={{ scale: 0.9 }} 
+                              onClick={() => setActiveScreen(item.name)} 
+                              className={`flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-black' : 'text-gray-500 hover:text-black'}`}
+                          >
+                              <item.icon size={24} />
+                              {isActive && (
+                                  <motion.div 
+                                      layoutId="active-pill" 
+                                      className="w-1.5 h-1.5 bg-black rounded-full mt-1.5"
+                                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                  />
+                              )}
+                          </motion.button>
+                      </div>
+                  );
+              })}
+          </div>
+      </motion.div>
+  );
 };
 
 export default App;

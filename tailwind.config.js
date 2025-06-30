@@ -4,7 +4,18 @@ module.exports = {
       "./src/**/*.{js,jsx,ts,tsx}",
     ],
     theme: {
-      extend: {},
+      extend: {
+        animation: {
+          'pulse-slow': 'pulse-slow 8s infinite alternate',
+          'pulse-slow-reverse': 'pulse-slow 8s infinite alternate-reverse',
+        },
+        keyframe: {
+          'pulse-slow': {
+            '0%, 100%': { opacity: 1 },
+            '50%': { opacity: 0.85 },
+          }
+        }
+      },
     },
     plugins: [],
   }
