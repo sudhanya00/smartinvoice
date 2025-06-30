@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
-import { LineChart, CreditCard, FileText, Settings, Upload, Search, Plus, X, AlertCircle, CheckCircle, Loader2, Sparkles, Trash2, Send, MessageCircle, LogOut, Sun, Moon, Eye, EyeOff, ChevronDown, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { LineChart, CreditCard, FileText, Settings, Upload, Search, Plus, X, AlertCircle, CheckCircle, Loader2, Sparkles, Trash2, Send, MessageCircle, LogOut, Eye, EyeOff, ChevronDown, RefreshCw } from 'lucide-react';
 
 // --- Firebase Configuration for Local Development ---
 const firebaseConfigString = process.env.REACT_APP_FIREBASE_CONFIG;
@@ -34,96 +35,121 @@ const Notification = ({ notification, onDismiss }) => {
     const Icon = isError ? AlertCircle : CheckCircle;
     
     return (
-        <div className={`fixed top-5 right-5 ${bgColor} text-white p-4 rounded-lg shadow-lg flex items-center z-50 animate-fade-in-down`}>
+        <motion.div 
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+            className={`fixed top-5 right-5 ${bgColor} text-white p-4 rounded-lg shadow-xl flex items-center z-50`}
+        >
             <Icon className="mr-3" /><span>{notification.text}</span>
             <button onClick={onDismiss} className="ml-4 font-bold"><X size={20} /></button>
-        </div>
+        </motion.div>
     );
 };
 
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50" onClick={onClose}>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 w-full max-w-sm m-4" onClick={e => e.stopPropagation()}>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">{message}</p>
-                <div className="mt-6 flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-semibold hover:bg-gray-300 dark:hover:bg-gray-600">
-                        Cancel
-                    </button>
-                    <button onClick={onConfirm} className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700">
-                        Confirm
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => (
+    <AnimatePresence>
+        {isOpen && (
+            <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50" 
+                onClick={onClose}
+            >
+                <motion.div 
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="bg-white/80 backdrop-blur-lg border border-white/20 rounded-2xl shadow-xl p-6 w-full max-w-sm m-4" 
+                    onClick={e => e.stopPropagation()}
+                >
+                    <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+                    <p className="text-sm text-gray-700 mt-2">{message}</p>
+                    <div className="mt-6 flex justify-end space-x-3">
+                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200/50 text-gray-800 font-semibold hover:bg-gray-300/70">
+                            Cancel
+                        </motion.button>
+                        <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={onConfirm} className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700">
+                            Confirm
+                        </motion.button>
+                    </div>
+                </motion.div>
+            </motion.div>
+        )}
+    </AnimatePresence>
+);
 
 // --- Gemini API Caller ---
-const callGeminiAPI = async (prompt, setNotification) => {
+const callGeminiAPI = async (prompt, setNotification, schema) => {
     try {
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-        if (!apiKey) {
-            throw new Error("Gemini API Key not found. Please set REACT_APP_GEMINI_API_KEY in your .env.local file.");
-        }
+        if (!apiKey) throw new Error("Gemini API Key not found.");
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        
+        const payload = { 
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            ...(schema && {
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: schema,
+                }
+            })
+        };
 
+        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) {
             const errorBody = await response.json();
-            const errorMessage = errorBody?.error?.message || `API call failed with status: ${response.status}`;
-            throw new Error(errorMessage);
+            throw new Error(errorBody?.error?.message || `API call failed with status: ${response.status}`);
         }
-
         const result = await response.json();
         if (result.candidates && result.candidates.length > 0 && result.candidates[0].content.parts[0].text) {
             return result.candidates[0].content.parts[0].text;
         } else {
              const finishReason = result.candidates?.[0]?.finishReason;
-             if (finishReason === "SAFETY") {
-                 throw new Error("AI analysis failed due to safety settings.");
-             }
+             if (finishReason === "SAFETY") throw new Error("AI analysis failed due to safety settings.");
              throw new Error("AI returned an empty response.");
         }
     } catch (error) {
-        console.error("Gemini API Error:", error);
         setNotification({ text: `AI Error: ${error.message}`, type: 'error' });
         return null;
     }
 };
 
-// --- Smart OCR Parsing with Gemini (More Robust) ---
+// --- Smart OCR Parsing with Gemini ---
 const parseInvoiceWithGemini = async (text, setNotification) => {
-    const prompt = `
-        You are an expert receipt parser. Analyze the following raw OCR text and extract the information into a valid JSON object.
-        The JSON object must have: "vendorName", "totalAmount", "invoiceDate" (YYYY-MM-DD), "category", and "lineItems" (array of objects with "description", "quantity", "price").
-        - "category" must be one of: Food & Dining, Transportation, Shopping, Utilities, Healthcare, Entertainment, Other.
-        - "lineItems" price and quantity should be numbers. Default quantity to 1 if not found.
-        - Be strict with the JSON format. Do not add trailing commas. Return ONLY the JSON object.
-        Raw Text:
-        ---
-        ${text}
-        ---
-    `;
-    const result = await callGeminiAPI(prompt, setNotification);
-    if (!result) return null;
+    const prompt = `You are an expert receipt parser. Analyze the following raw OCR text and extract the information into the specified JSON format. Infer the currency from symbols like $, £, €, ₹ or codes like USD, EUR, INR. Default to USD if no currency is found. Raw Text:\n---\n${text}\n---`;
     
+    const schema = {
+        type: "OBJECT",
+        properties: {
+            vendorName: { type: "STRING" },
+            totalAmount: { type: "NUMBER" },
+            invoiceDate: { type: "STRING", description: "Date in YYYY-MM-DD format" },
+            currency: { type: "STRING", description: "3-letter currency code like USD, EUR, INR" },
+            category: { type: "STRING", enum: ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Healthcare', 'Entertainment', 'Other'] },
+            lineItems: {
+                type: "ARRAY",
+                items: {
+                    type: "OBJECT",
+                    properties: {
+                        description: { type: "STRING" },
+                        quantity: { type: "NUMBER" },
+                        price: { type: "NUMBER" },
+                    },
+                    required: ["description", "price"]
+                }
+            }
+        },
+        required: ["vendorName", "totalAmount", "invoiceDate", "category"]
+    };
+
+    const result = await callGeminiAPI(prompt, setNotification, schema);
+    if (!result) return null;
     try {
-        const startIndex = result.indexOf('{');
-        const endIndex = result.lastIndexOf('}');
-        if (startIndex === -1 || endIndex === -1) throw new Error("Valid JSON not found.");
-        let jsonString = result.substring(startIndex, endIndex + 1);
-        jsonString = jsonString.replace(/,\s*([}\]])/g, '$1');
-        return JSON.parse(jsonString);
+        return JSON.parse(result);
     } catch (e) {
         console.error("Failed to parse JSON from Gemini:", e, result);
         return null;
@@ -133,40 +159,21 @@ const parseInvoiceWithGemini = async (text, setNotification) => {
 
 // --- Main App Component ---
 const App = () => {
-    const [theme, setTheme] = useState('light');
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let app;
-        try {
-            app = initializeApp(firebaseConfig);
-        } catch(e) {
-            console.error("Firebase initialization error", e)
-        }
+        try { app = initializeApp(firebaseConfig); } catch(e) { console.error("Firebase init error", e) }
         const auth = getAuth(app);
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            setUser(user);
-            setLoading(false);
-        });
+        const unsubscribe = onAuthStateChanged(auth, (user) => { setUser(user); setLoading(false); });
         return () => unsubscribe();
     }, []);
 
-    useEffect(() => {
-        if (theme === 'dark') {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    }, [theme]);
+    if (loading) return <div className="w-screen h-screen flex justify-center items-center bg-gray-100"><Loader2 className="animate-spin text-black" size={48} /></div>;
 
-    if (loading) {
-        return <div className="w-screen h-screen flex justify-center items-center bg-gray-50 dark:bg-gray-900"><Loader2 className="animate-spin text-blue-500" size={48} /></div>;
-    }
-
-    return user ? <MainApp user={user} theme={theme} setTheme={setTheme} /> : <LoginScreen />;
+    return user ? <MainApp user={user} /> : <LoginScreen />;
 };
-
 
 // --- Login / Auth Screen ---
 const LoginScreen = () => {
@@ -178,46 +185,39 @@ const LoginScreen = () => {
     const [loading, setLoading] = useState(false);
 
     const handleAuth = async (e) => {
-        e.preventDefault();
-        setLoading(true);
-        setError('');
+        e.preventDefault(); setLoading(true); setError('');
         const auth = getAuth();
         try {
-            if (isLogin) {
-                await signInWithEmailAndPassword(auth, email, password);
-            } else {
-                await createUserWithEmailAndPassword(auth, email, password);
-            }
-        } catch (err) {
-            setError(err.message);
-        }
+            if (isLogin) await signInWithEmailAndPassword(auth, email, password);
+            else await createUserWithEmailAndPassword(auth, email, password);
+        } catch (err) { setError(err.message); }
         setLoading(false);
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
+        <div className="min-h-screen bg-gray-100 flex flex-col justify-center items-center p-4 antialiased">
              <div className="max-w-md w-full mx-auto">
                 <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-gray-900">Welcome</h1>
-                    <p className="text-gray-500 mt-2">{isLogin ? "Sign in to continue." : "Create an account to get started."}</p>
+                    <h1 className="text-5xl font-bold text-black tracking-wide">Welcome</h1>
+                    <p className="text-gray-600 mt-2">{isLogin ? "Sign in to continue." : "Create an account."}</p>
                 </div>
-                <div className="bg-white p-8 rounded-2xl shadow-lg">
+                <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-8 rounded-2xl shadow-xl">
                     <form onSubmit={handleAuth} className="space-y-6">
-                        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 bg-white/50 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-black" required />
                         <div className="relative">
-                            <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
+                            <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full px-4 py-3 bg-white/50 border border-white/20 rounded-lg focus:outline-none focus:ring-2 focus:ring-black" required />
+                            <motion.button type="button" whileHover={{scale: 1.1}} whileTap={{scale:0.9}} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600">
                                 {showPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
-                            </button>
+                            </motion.button>
                         </div>
                         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-                        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:bg-gray-400">
+                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={loading} className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors disabled:bg-gray-400 shadow-lg">
                             {loading ? <Loader2 className="animate-spin mx-auto"/> : (isLogin ? 'Sign In' : 'Create Account')}
-                        </button>
+                        </motion.button>
                     </form>
-                    <p className="text-center text-sm text-gray-500 mt-6">
+                    <p className="text-center text-sm text-gray-600 mt-6">
                         {isLogin ? "Don't have an account?" : "Already have an account?"}
-                        <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="font-semibold text-blue-600 hover:underline ml-1">
+                        <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="font-semibold text-black hover:underline ml-1">
                             {isLogin ? 'Sign Up' : 'Sign In'}
                         </button>
                     </p>
@@ -227,9 +227,8 @@ const LoginScreen = () => {
     );
 };
 
-
 // --- Main Application after Login ---
-const MainApp = ({ user, theme, setTheme }) => {
+const MainApp = ({ user }) => {
     const [activeScreen, setActiveScreen] = useState('Dashboard');
     const [db, setDb] = useState(null);
     const [invoices, setInvoices] = useState([]);
@@ -240,11 +239,7 @@ const MainApp = ({ user, theme, setTheme }) => {
     useEffect(() => {
         // eslint-disable-next-line no-undef
         if (window.Tesseract) setIsOcrReady(true);
-        try {
-            setDb(getFirestore(initializeApp(firebaseConfig)));
-        } catch (error) {
-            console.error("Firebase init failed in MainApp:", error);
-        }
+        try { setDb(getFirestore(initializeApp(firebaseConfig))); } catch (error) { console.error("Firebase init failed in MainApp:", error); }
     }, []);
 
     useEffect(() => {
@@ -253,42 +248,43 @@ const MainApp = ({ user, theme, setTheme }) => {
             const unsubscribe = onSnapshot(q, (snapshot) => {
                 setInvoices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
                 setIsLoading(false);
-            }, (error) => {
-                console.error("Fetch error:", error);
-                setNotification({ text: 'Could not fetch invoices. Check Firestore rules.', type: 'error' });
-                setIsLoading(false);
-            });
+            }, () => setIsLoading(false));
             return () => unsubscribe();
-        } else if (user) {
-            // db might not be ready yet
-        } else {
-            setIsLoading(false);
-        }
+        } else if (user) {} 
+        else setIsLoading(false);
     }, [user, db]);
 
-    const renderScreen = () => {
-        switch (activeScreen) {
-            case 'Dashboard': return <DashboardScreen invoices={invoices} setNotification={setNotification} />;
-            case 'Scan': return <ScanScreen db={db} userId={user.uid} setActiveScreen={setActiveScreen} setNotification={setNotification} isOcrReady={isOcrReady} />;
-            case 'Invoices': return <InvoicesScreen invoices={invoices} db={db} userId={user.uid} setNotification={setNotification} />;
-            case 'Chat': return <ChatScreen invoices={invoices} setNotification={setNotification} />;
-            case 'Profile': return <ProfileScreen user={user} theme={theme} setTheme={setTheme} />;
-            default: return <DashboardScreen invoices={invoices} setNotification={setNotification}/>;
-        }
-    };
+    const renderScreen = () => (
+        <AnimatePresence mode="wait">
+            <motion.div
+                key={activeScreen}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.3 }}
+            >
+                {
+                    {
+                        'Dashboard': <DashboardScreen invoices={invoices} setNotification={setNotification} />,
+                        'Scan': <ScanScreen db={db} userId={user.uid} setActiveScreen={setActiveScreen} setNotification={setNotification} isOcrReady={isOcrReady} />,
+                        'Invoices': <InvoicesScreen invoices={invoices} db={db} userId={user.uid} setNotification={setNotification} />,
+                        'Chat': <ChatScreen invoices={invoices} setNotification={setNotification} />,
+                        'Profile': <ProfileScreen user={user} />
+                    }[activeScreen]
+                }
+            </motion.div>
+        </AnimatePresence>
+    );
 
     return (
-        <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans h-screen flex flex-col antialiased" style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div className="bg-gray-100 text-gray-900 font-sans h-screen flex flex-col antialiased subpixel-antialiased" style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
             <Notification notification={notification} onDismiss={() => setNotification(null)} />
-            <main className="flex-1 overflow-y-auto p-4 md:p-6">
-                {isLoading ? (<div className="flex justify-center items-center h-full"><Loader2 className="animate-spin text-blue-500" size={48} /></div>) : (renderScreen())}
-            </main>
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">{renderScreen()}</main>
             <BottomNavBar activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
         </div>
     );
 };
 
-// Screen Components
 const DashboardScreen = ({ invoices, setNotification }) => {
     const [insights, setInsights] = useState([]);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
@@ -342,15 +338,15 @@ const DashboardScreen = ({ invoices, setNotification }) => {
 
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm">
+            <h1 className="text-4xl font-bold text-black tracking-wide">Dashboard</h1>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                 <div className="flex justify-between items-center mb-3">
-                    <h2 className="text-lg font-semibold flex items-center text-gray-800 dark:text-white"><Sparkles size={20} className="mr-2 text-blue-500"/>Smart Insights</h2>
-                    <button onClick={getDashboardInsights} disabled={isInsightsLoading} className="text-blue-500 hover:text-blue-700 disabled:opacity-50">
+                    <h2 className="text-lg font-semibold flex items-center text-black"><Sparkles size={20} className="mr-2 text-black"/>Smart Insights</h2>
+                    <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={getDashboardInsights} disabled={isInsightsLoading} className="text-black hover:text-gray-700 disabled:opacity-50">
                         <RefreshCw size={16} className={isInsightsLoading ? 'animate-spin' : ''}/>
-                    </button>
+                    </motion.button>
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-300 space-y-2">
+                <div className="text-sm text-gray-700 space-y-2">
                     {isInsightsLoading ? <div className="flex items-center space-x-2 text-gray-500"><Loader2 className="animate-spin" size={16}/><span>Analyzing...</span></div>
                         : insights.length > 0 ? insights.map((insight, index) => <p key={index}>• {insight}</p>)
                         : <p className="text-gray-500">Scan more invoices to unlock personalized insights!</p>
@@ -358,33 +354,33 @@ const DashboardScreen = ({ invoices, setNotification }) => {
                 </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm flex items-center space-x-4">
-                    <div className="bg-blue-100 dark:bg-blue-900/50 p-3 rounded-xl"><CreditCard className="text-blue-500" /></div>
+                <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl flex items-center space-x-4">
+                    <div className="bg-gray-100 p-3 rounded-xl"><CreditCard className="text-black" /></div>
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Total Spent</p>
-                        <p className="text-2xl font-semibold text-gray-800 dark:text-white">${totalSpent.toFixed(2)}</p>
+                        <p className="text-sm text-gray-600">Total Spent</p>
+                        <p className="text-2xl font-semibold text-black">${totalSpent.toFixed(2)}</p>
                     </div>
                 </div>
-                <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm flex items-center space-x-4">
-                    <div className="bg-green-100 dark:bg-green-900/50 p-3 rounded-xl"><FileText className="text-green-500" /></div>
+                <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl flex items-center space-x-4">
+                    <div className="bg-gray-100 p-3 rounded-xl"><FileText className="text-black" /></div>
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Invoices</p>
-                        <p className="text-2xl font-semibold text-gray-800 dark:text-white">{invoices.length}</p>
+                        <p className="text-sm text-gray-600">Invoices</p>
+                        <p className="text-2xl font-semibold text-black">{invoices.length}</p>
                     </div>
                 </div>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm">
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Top Categories</h2>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Top Categories</h2>
                 <div className="space-y-3">
                     {categoryData.length > 0 ? categoryData.map(([category, amount]) => (
                         <div key={category}>
                             <div className="flex justify-between items-center mb-1 text-sm">
-                                <span className="font-medium text-gray-600 dark:text-gray-300">{category}</span>
-                                <span className="text-gray-500 dark:text-gray-400">${amount.toFixed(2)}</span>
+                                <span className="font-medium text-gray-700">{category}</span>
+                                <span className="text-gray-500">${amount.toFixed(2)}</span>
                             </div>
-                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2"><div className="bg-blue-500 h-2 rounded-full" style={{ width: `${(amount / totalSpent) * 100}%` }}></div></div>
+                            <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-black h-2 rounded-full" style={{ width: `${(amount / totalSpent) * 100}%` }}></div></div>
                         </div>
-                    )) : <p className="text-center text-sm text-gray-500 dark:text-gray-400 py-5">No spending data yet.</p>}
+                    )) : <p className="text-center text-sm text-gray-500 py-5">No spending data yet.</p>}
                 </div>
             </div>
         </div>
@@ -412,10 +408,9 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
             await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/invoices`, invoiceToDelete));
             setNotification({ text: "Invoice deleted successfully", type: 'success' });
         } catch (error) {
-            console.error("Error deleting invoice: ", error);
             setNotification({ text: "Failed to delete invoice.", type: 'error' });
         } finally {
-            setInvoiceToDelete(null); // Close modal
+            setInvoiceToDelete(null); 
         }
     };
 
@@ -429,52 +424,56 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
                 title="Delete Invoice"
                 message="Are you sure you want to permanently delete this invoice? This action cannot be undone."
             />
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Invoices</h1>
+            <h1 className="text-4xl font-bold text-black tracking-wide">Invoices</h1>
             <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <input type="text" placeholder="Search invoices..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full p-3 pl-11 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-3 pl-11 bg-white/50 backdrop-blur-lg border border-white/20 rounded-xl focus:ring-2 focus:ring-black outline-none"
                 />
             </div>
             <div className="space-y-3">
                 {filteredInvoices.map(invoice => (
-                    <div key={invoice.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm transition-all duration-300">
-                        <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => handleToggleExpand(invoice.id)}>
+                    <motion.div layout key={invoice.id} className="bg-white/50 backdrop-blur-lg border border-white/20 rounded-xl shadow-xl overflow-hidden">
+                        <motion.div layout className="p-4 flex items-center justify-between cursor-pointer" onClick={() => handleToggleExpand(invoice.id)}>
                             <div>
-                                <p className="font-semibold text-gray-800 dark:text-white">{invoice.vendorName || 'N/A'}</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">{invoice.invoiceDate}</p>
+                                <p className="font-semibold text-black">{invoice.vendorName || 'N/A'}</p>
+                                <p className="text-sm text-gray-500">{invoice.invoiceDate}</p>
                             </div>
                             <div className="flex items-center space-x-4">
                                 <div className="text-right">
-                                    <p className="font-bold text-lg text-gray-800 dark:text-white">${(parseFloat(invoice.totalAmount) || 0).toFixed(2)}</p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">{invoice.category}</p>
+                                    <p className="font-bold text-lg text-black">${(parseFloat(invoice.totalAmount) || 0).toFixed(2)}</p>
+                                    <p className="text-sm text-gray-500">{invoice.category}</p>
                                 </div>
-                                <ChevronDown className={`transform transition-transform duration-300 ${expandedInvoiceId === invoice.id ? 'rotate-180' : ''}`} />
+                                <motion.div animate={{ rotate: expandedInvoiceId === invoice.id ? 180 : 0 }}><ChevronDown /></motion.div>
                             </div>
-                        </div>
-                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${expandedInvoiceId === invoice.id ? 'max-h-96' : 'max-h-0'}`}>
-                           <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700">
-                                <div className="flex justify-between items-center pt-3 mb-2">
-                                     <h4 className="font-semibold text-sm text-gray-600 dark:text-gray-300">Item Details</h4>
-                                     <button onClick={() => setInvoiceToDelete(invoice.id)} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-full">
-                                         <Trash2 size={16}/>
-                                     </button>
-                                </div>
-                                <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400">
-                                     {invoice.lineItems && invoice.lineItems.length > 0 ? (
-                                         invoice.lineItems.map((item, index) => (
-                                             <div key={index} className="flex justify-between">
-                                                 <span>{item.description} (x{item.quantity || 1})</span>
-                                                 <span>${(parseFloat(item.price) || 0).toFixed(2)}</span>
-                                             </div>
-                                         ))
-                                     ) : (
-                                        <p className="text-xs">No detailed items were extracted for this invoice.</p>
-                                     )}
-                                </div>
-                           </div>
-                        </div>
-                    </div>
+                        </motion.div>
+                        <AnimatePresence>
+                        {expandedInvoiceId === invoice.id && (
+                           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                               <div className="px-4 pb-4 border-t border-white/20">
+                                    <div className="flex justify-between items-center pt-3 mb-2">
+                                         <h4 className="font-semibold text-sm text-gray-600">Item Details</h4>
+                                         <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => setInvoiceToDelete(invoice.id)} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                             <Trash2 size={16}/>
+                                         </motion.button>
+                                    </div>
+                                    <div className="space-y-1 text-sm text-gray-600">
+                                         {invoice.lineItems && invoice.lineItems.length > 0 ? (
+                                             invoice.lineItems.map((item, index) => (
+                                                 <div key={index} className="flex justify-between">
+                                                     <span>{item.description} (x{item.quantity || 1})</span>
+                                                     <span>${(parseFloat(item.price) || 0).toFixed(2)}</span>
+                                                 </div>
+                                             ))
+                                         ) : (
+                                            <p className="text-xs">No detailed items were extracted for this invoice.</p>
+                                         )}
+                                    </div>
+                               </div>
+                           </motion.div>
+                        )}
+                        </AnimatePresence>
+                    </motion.div>
                 ))}
             </div>
         </div>
@@ -482,7 +481,7 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
 };
 
 const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }) => {
-    const [invoiceData, setInvoiceData] = useState({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], rawText: '' });
+    const [invoiceData, setInvoiceData] = useState({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], rawText: '', currency: 'USD' });
     const [imageUri, setImageUri] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -508,12 +507,13 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }
                     vendorName: structuredData.vendorName || '', totalAmount: structuredData.totalAmount || '',
                     invoiceDate: structuredData.invoiceDate || new Date().toISOString().split('T')[0],
                     category: structuredData.category || 'Other', lineItems: structuredData.lineItems || [],
+                    currency: structuredData.currency || 'USD',
                     rawText: text,
                 });
                 setNotification({ text: "Invoice details extracted!", type: "success" });
             } else {
                 setNotification({ text: "AI couldn't extract details. Please enter manually.", type: 'error' });
-                setInvoiceData({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], rawText: text });
+                setInvoiceData({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], rawText: text, currency: 'USD' });
             }
         } catch (error) {
             setNotification({ text: 'Could not process image.', type: 'error' });
@@ -552,51 +552,38 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }
     };
     
     const defaultCategories = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Healthcare', 'Entertainment', 'Other'];
-    const handleItemChange = (index, field, value) => {
-        const updatedItems = [...invoiceData.lineItems];
-        updatedItems[index][field] = value;
-        setInvoiceData({...invoiceData, lineItems: updatedItems});
-    };
-    const removeItem = (index) => setInvoiceData({...invoiceData, lineItems: invoiceData.lineItems.filter((_, i) => i !== index)});
+    const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
 
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Scan Invoice</h1>
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm">
+            <h1 className="text-4xl font-bold text-black tracking-wide">Scan Invoice</h1>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
                 <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImagePick} className="hidden" />
-                {isProcessing ? (<div className="text-center mb-4"><Loader2 className="animate-spin text-blue-500 mx-auto" size={32} /><p className="mt-2 text-blue-500">{ocrProgress.status} ({ocrProgress.progress}%)</p></div>)
+                {isProcessing ? (<div className="text-center mb-4"><Loader2 className="animate-spin text-black mx-auto" size={32} /><p className="mt-2 text-black">{ocrProgress.status} ({ocrProgress.progress}%)</p></div>)
                 : imageUri ? (
                     <div className="flex items-center space-x-4 mb-4">
                         <img src={imageUri} alt="Preview" className="w-16 h-16 rounded-lg object-cover" />
                         <div className="flex-1">
-                            <button onClick={() => fileInputRef.current.click()} className="text-sm font-semibold text-blue-600 hover:underline">Scan Another</button>
+                            <button onClick={() => fileInputRef.current.click()} className="text-sm font-semibold text-black hover:underline">Scan Another</button>
                             <button onClick={() => setImageUri(null)} className="ml-4 text-sm font-semibold text-red-600 hover:underline">Remove</button>
                         </div>
                     </div>
                 ) : (
-                    <button onClick={() => fileInputRef.current.click()} disabled={!isOcrReady} className="w-full flex flex-col items-center justify-center p-8 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800/50 dark:hover:bg-gray-700/50 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 transition-colors disabled:opacity-50">
+                    <motion.button whileHover={{scale: 1.02}} whileTap={{scale: 0.98}} onClick={() => fileInputRef.current.click()} disabled={!isOcrReady} className="w-full flex flex-col items-center justify-center p-8 bg-white/30 hover:bg-white/50 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 transition-colors disabled:opacity-50">
                         <Upload size={32} />
                         <span className="mt-2 font-semibold">{isOcrReady ? 'Tap to Scan or Upload' : 'Initializing Scanner...'}</span>
-                    </button>
+                    </motion.button>
                 )}
                 
                 <div className="space-y-4">
-                     <div><label className="text-sm font-medium text-gray-600 dark:text-gray-400">Vendor Name</label><input type="text" value={invoiceData.vendorName || ''} onChange={e => setInvoiceData({...invoiceData, vendorName: e.target.value})} className="w-full mt-1 p-3 bg-gray-100 dark:bg-gray-700 border-transparent rounded-lg" placeholder="e.g., Cafe Express" /></div>
-                    <div><label className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Amount</label><input type="number" value={invoiceData.totalAmount || ''} onChange={e => setInvoiceData({...invoiceData, totalAmount: e.target.value})} className="w-full mt-1 p-3 bg-gray-100 dark:bg-gray-700 border-transparent rounded-lg" placeholder="e.g., 25.50" /></div>
-                    <div><label className="text-sm font-medium text-gray-600 dark:text-gray-400">Invoice Date</label><input type="date" value={invoiceData.invoiceDate || ''} onChange={e => setInvoiceData({...invoiceData, invoiceDate: e.target.value})} className="w-full mt-1 p-3 bg-gray-100 dark:bg-gray-700 border-transparent rounded-lg" /></div>
-                    <div><label className="text-sm font-medium text-gray-600 dark:text-gray-400">Category</label><select value={invoiceData.category || 'Other'} onChange={e => setInvoiceData({...invoiceData, category: e.target.value})} className="w-full mt-1 p-3 bg-gray-100 dark:bg-gray-700 border-transparent rounded-lg">{defaultCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
-                    {invoiceData.lineItems && invoiceData.lineItems.length > 0 && (
-                        <div>
-                            <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Extracted Items</label>
-                            <div className="space-y-2 mt-1">{invoiceData.lineItems.map((item, index) => (<div key={index} className="grid grid-cols-12 gap-2 items-center">
-                                <input type="text" value={item.description || ''} onChange={e => handleItemChange(index, 'description', e.target.value)} placeholder="Item" className="col-span-6 p-2 bg-gray-50 dark:bg-gray-600 rounded-md text-sm" />
-                                <input type="number" value={item.quantity || ''} onChange={e => handleItemChange(index, 'quantity', e.target.value)} placeholder="Qty" className="col-span-2 p-2 bg-gray-50 dark:bg-gray-600 rounded-md text-sm" />
-                                <input type="number" value={item.price || ''} onChange={e => handleItemChange(index, 'price', e.target.value)} placeholder="Price" className="col-span-3 p-2 bg-gray-50 dark:bg-gray-600 rounded-md text-sm" />
-                                <button onClick={() => removeItem(index)} className="col-span-1 text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
-                            </div>))}</div>
-                        </div>
-                    )}
-                     <button onClick={handleSaveInvoice} disabled={isSaving || isProcessing} className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400"> {isSaving ? 'Saving...' : 'Save Invoice'} </button>
+                     <div><label className="text-sm font-medium text-gray-600">Vendor Name</label><input type="text" value={invoiceData.vendorName || ''} onChange={e => setInvoiceData({...invoiceData, vendorName: e.target.value})} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" placeholder="e.g., Cafe Express" /></div>
+                     <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-2"><label className="text-sm font-medium text-gray-600">Total Amount</label><input type="number" value={invoiceData.totalAmount || ''} onChange={e => setInvoiceData({...invoiceData, totalAmount: e.target.value})} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" placeholder="e.g., 25.50" /></div>
+                        <div><label className="text-sm font-medium text-gray-600">Currency</label><select value={invoiceData.currency || 'USD'} onChange={e => setInvoiceData({...invoiceData, currency: e.target.value})} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg">{currencies.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                     </div>
+                    <div><label className="text-sm font-medium text-gray-600">Invoice Date</label><input type="date" value={invoiceData.invoiceDate || ''} onChange={e => setInvoiceData({...invoiceData, invoiceDate: e.target.value})} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" /></div>
+                    <div><label className="text-sm font-medium text-gray-600">Category</label><select value={invoiceData.category || 'Other'} onChange={e => setInvoiceData({...invoiceData, category: e.target.value})} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg">{defaultCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
+                     <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleSaveInvoice} disabled={isSaving || isProcessing} className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-400 shadow-lg"> {isSaving ? 'Saving...' : 'Save Invoice'} </motion.button>
                 </div>
             </div>
         </div>
@@ -628,45 +615,38 @@ const ChatScreen = ({ invoices, setNotification }) => {
 
     return (
         <div className="flex flex-col h-full">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-4 px-1">AI Chat Assistant</h1>
-            <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 p-4 bg-white dark:bg-gray-800 rounded-2xl">
+            <h1 className="text-4xl font-bold text-black tracking-wide mb-4 px-1">AI Chat Assistant</h1>
+            <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 p-4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl">
                 {messages.length === 0 && !isLoading && (
                     <div className="text-center text-gray-500 pt-10">
                         <MessageCircle size={48} className="mx-auto"/><p className="mt-2">Ask me anything about your invoices!</p>
                         <p className="text-xs mt-2">e.g., "Split the bill from Don Cafe between 4 people"</p>
                     </div>
                 )}
-                {messages.map((msg, index) => (<div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'}`}><p className="text-sm whitespace-pre-wrap">{msg.text}</p></div></div>))}
-                {isLoading && (<div className="flex justify-start"><div className="max-w-xs p-3 rounded-2xl bg-gray-200 dark:bg-gray-700"><Loader2 className="animate-spin text-blue-500"/></div></div>)}
+                <AnimatePresence>
+                {messages.map((msg, index) => (<motion.div key={index} initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}><p className="text-sm whitespace-pre-wrap">{msg.text}</p></div></motion.div>))}
+                </AnimatePresence>
+                {isLoading && (<motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="flex justify-start"><div className="max-w-xs p-3 rounded-2xl bg-gray-200"><Loader2 className="animate-spin text-black"/></div></motion.div>)}
             </div>
-            <div className="p-4 bg-white dark:bg-gray-800 rounded-b-2xl border-t border-gray-100 dark:border-gray-700">
-                <div className="flex items-center space-x-2"><input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your spending..." className="w-full p-3 bg-gray-100 dark:bg-gray-700 border-transparent rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"/><button onClick={handleSendMessage} disabled={isLoading} className="bg-blue-600 text-white p-3 rounded-lg disabled:bg-gray-400"><Send size={20}/></button></div>
+            <div className="p-4 bg-transparent">
+                <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-lg border border-white/20 p-2 rounded-xl"><input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your spending..." className="w-full p-2 bg-transparent focus:outline-none"/><motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleSendMessage} disabled={isLoading} className="bg-black text-white p-2 rounded-lg disabled:bg-gray-400"><Send size={20}/></motion.button></div>
             </div>
         </div>
     );
 };
 
-const ProfileScreen = ({ user, theme, setTheme }) => {
+const ProfileScreen = ({ user }) => {
     const handleLogout = () => {
         signOut(getAuth());
     };
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Profile</h1>
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm">
-                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Account</h2>
-                 <p className="text-sm text-gray-500 dark:text-gray-400">Email</p>
-                 <p className="font-semibold text-gray-700 dark:text-gray-200 mb-4">{user.email}</p>
-                 <button onClick={handleLogout} className="w-full text-left p-3 flex items-center bg-gray-100 dark:bg-gray-700/50 rounded-lg text-red-500 font-semibold hover:bg-red-100 dark:hover:bg-red-900/50"><LogOut size={16} className="mr-2"/> Sign Out</button>
-            </div>
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm">
-                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Appearance</h2>
-                 <div className="flex justify-between items-center">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">Dark Mode</span>
-                    <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className={`p-2 rounded-full transition-colors ${theme === 'dark' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
-                        {theme === 'dark' ? <Moon size={20}/> : <Sun size={20}/>}
-                    </button>
-                 </div>
+            <h1 className="text-4xl font-bold text-black tracking-wide">Profile</h1>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
+                 <h2 className="text-lg font-semibold text-black mb-4">Account</h2>
+                 <p className="text-sm text-gray-600">Email</p>
+                 <p className="font-semibold text-gray-800 mb-4">{user.email}</p>
+                 <motion.button whileHover={{scale: 1.02}} whileTap={{scale: 0.98}} onClick={handleLogout} className="w-full text-left p-3 flex items-center bg-white/50 rounded-lg text-red-500 font-semibold hover:bg-red-100/50"><LogOut size={16} className="mr-2"/> Sign Out</motion.button>
             </div>
         </div>
     );
@@ -675,30 +655,30 @@ const ProfileScreen = ({ user, theme, setTheme }) => {
 const BottomNavBar = ({ activeScreen, setActiveScreen }) => {
     const navItems = [ { name: 'Dashboard', icon: LineChart }, { name: 'Invoices', icon: FileText }, { name: 'Scan', icon: Plus }, { name: 'Chat', icon: MessageCircle }, { name: 'Profile', icon: Settings } ];
     return (
-        <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border-t border-gray-200 dark:border-gray-700">
-            <div className="flex justify-around items-center max-w-lg mx-auto h-16">
+        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30">
+            <div className="flex justify-around items-center max-w-lg mx-auto h-20">
                 {navItems.map((item) => {
                     const isActive = activeScreen === item.name;
                     if (item.name === 'Scan') {
                         return (
                             <div key={item.name} className="w-20 flex justify-center">
-                                <button onClick={() => setActiveScreen(item.name)} className="-mt-8 bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:bg-blue-700 transform hover:scale-110 transition-transform">
-                                    <item.icon size={28} />
-                                </button>
+                                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className="-mt-12 bg-black text-white rounded-full w-20 h-20 flex items-center justify-center shadow-xl shadow-black/30 ring-4 ring-white/20">
+                                    <item.icon size={32} />
+                                </motion.button>
                             </div>
                         );
                     }
                     return (
                         <div key={item.name} className="w-20">
-                            <button onClick={() => setActiveScreen(item.name)} className={`flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-300'}`}>
-                                <item.icon size={22} />
-                                <span className="text-xs mt-1">{item.name}</span>
-                            </button>
+                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className={`flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-black' : 'text-gray-500 hover:text-black'}`}>
+                                <item.icon size={24} />
+                                {isActive && <motion.div layoutId="active-pill" className="absolute bottom-2 w-2 h-2 bg-black rounded-full"/>}
+                            </motion.button>
                         </div>
                     );
                 })}
             </div>
-        </div>
+        </motion.div>
     );
 };
 
