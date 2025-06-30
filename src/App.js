@@ -83,22 +83,12 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => (
 );
 
 // --- Gemini API Caller ---
-const callGeminiAPI = async (prompt, setNotification, schema) => {
+const callGeminiAPI = async (payload, setNotification) => {
     try {
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
         if (!apiKey) throw new Error("Gemini API Key not found.");
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
         
-        const payload = { 
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            ...(schema && {
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: schema,
-                }
-            })
-        };
-
         const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) {
             const errorBody = await response.json();
@@ -119,8 +109,8 @@ const callGeminiAPI = async (prompt, setNotification, schema) => {
 };
 
 // --- Smart OCR Parsing with Gemini ---
-const parseInvoiceWithGemini = async (text, setNotification) => {
-    const prompt = `You are an expert receipt parser. Analyze the following raw OCR text and extract the information into the specified JSON format. Infer the currency from symbols like $, £, €, ₹ or codes like USD, EUR, INR. Default to USD if no currency is found. Raw Text:\n---\n${text}\n---`;
+const parseInvoiceWithGemini = async (imageData, setNotification) => {
+    const prompt = `You are an expert receipt parser. Analyze the following receipt image and extract the information into the specified JSON format. Infer the currency from symbols like $, £, €, ₹ or codes like USD, EUR, INR. Default to USD if no currency is found.`;
     
     const schema = {
         type: "OBJECT",
@@ -146,7 +136,20 @@ const parseInvoiceWithGemini = async (text, setNotification) => {
         required: ["vendorName", "totalAmount", "invoiceDate", "category"]
     };
 
-    const result = await callGeminiAPI(prompt, setNotification, schema);
+    const payload = {
+        contents: [{
+            parts: [
+                { text: prompt },
+                { inlineData: { mimeType: 'image/jpeg', data: imageData } }
+            ]
+        }],
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: schema,
+        }
+    };
+
+    const result = await callGeminiAPI(payload, setNotification);
     if (!result) return null;
     try {
         return JSON.parse(result);
@@ -156,6 +159,13 @@ const parseInvoiceWithGemini = async (text, setNotification) => {
     }
 };
 
+// --- Currency Symbol Helper ---
+const getCurrencySymbol = (currencyCode) => {
+    const symbols = {
+        'USD': '$', 'EUR': '€', 'GBP': '£', 'INR': '₹', 'JPY': '¥', 'CAD': '$', 'AUD': '$'
+    };
+    return symbols[currencyCode] || '$';
+};
 
 // --- Main App Component ---
 const App = () => {
@@ -234,11 +244,8 @@ const MainApp = ({ user }) => {
     const [invoices, setInvoices] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [notification, setNotification] = useState(null);
-    const [isOcrReady, setIsOcrReady] = useState(false);
 
     useEffect(() => {
-        // eslint-disable-next-line no-undef
-        if (window.Tesseract) setIsOcrReady(true);
         try { setDb(getFirestore(initializeApp(firebaseConfig))); } catch (error) { console.error("Firebase init failed in MainApp:", error); }
     }, []);
 
@@ -266,7 +273,7 @@ const MainApp = ({ user }) => {
                 {
                     {
                         'Dashboard': <DashboardScreen invoices={invoices} setNotification={setNotification} />,
-                        'Scan': <ScanScreen db={db} userId={user.uid} setActiveScreen={setActiveScreen} setNotification={setNotification} isOcrReady={isOcrReady} />,
+                        'Scan': <ScanScreen db={db} userId={user.uid} setActiveScreen={setActiveScreen} setNotification={setNotification} />,
                         'Invoices': <InvoicesScreen invoices={invoices} db={db} userId={user.uid} setNotification={setNotification} />,
                         'Chat': <ChatScreen invoices={invoices} setNotification={setNotification} />,
                         'Profile': <ProfileScreen user={user} />
@@ -298,7 +305,8 @@ const DashboardScreen = ({ invoices, setNotification }) => {
         setIsInsightsLoading(true);
         const prompt = `You are a financial assistant. Analyze the user's invoices. Generate 3 short, interesting insights. Ideas: mention a high-spending category, point out a potential expiring warranty, identify a new subscription, or suggest a related purchase. Format as a JSON array of strings. Example: ["Your spending on Food & Dining was highest last week.", "Your car insurance may be expiring soon."]\n\nData: ${JSON.stringify(invoices)}`;
         
-        const result = await callGeminiAPI(prompt, setNotification);
+        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+        const result = await callGeminiAPI(payload, setNotification);
         if(result){
             try {
                 const startIndex = result.indexOf('[');
@@ -358,7 +366,7 @@ const DashboardScreen = ({ invoices, setNotification }) => {
                     <div className="bg-gray-100 p-3 rounded-xl"><CreditCard className="text-black" /></div>
                     <div>
                         <p className="text-sm text-gray-600">Total Spent</p>
-                        <p className="text-2xl font-semibold text-black">${totalSpent.toFixed(2)}</p>
+                        <p className="text-2xl font-semibold text-black">{getCurrencySymbol(invoices[0]?.currency || 'USD')}{totalSpent.toFixed(2)}</p>
                     </div>
                 </div>
                 <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl flex items-center space-x-4">
@@ -376,7 +384,7 @@ const DashboardScreen = ({ invoices, setNotification }) => {
                         <div key={category}>
                             <div className="flex justify-between items-center mb-1 text-sm">
                                 <span className="font-medium text-gray-700">{category}</span>
-                                <span className="text-gray-500">${amount.toFixed(2)}</span>
+                                <span className="text-gray-500">{getCurrencySymbol(invoices[0]?.currency || 'USD')}{amount.toFixed(2)}</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-black h-2 rounded-full" style={{ width: `${(amount / totalSpent) * 100}%` }}></div></div>
                         </div>
@@ -441,7 +449,7 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
                             </div>
                             <div className="flex items-center space-x-4">
                                 <div className="text-right">
-                                    <p className="font-bold text-lg text-black">${(parseFloat(invoice.totalAmount) || 0).toFixed(2)}</p>
+                                    <p className="font-bold text-lg text-black">{getCurrencySymbol(invoice.currency)}{(parseFloat(invoice.totalAmount) || 0).toFixed(2)}</p>
                                     <p className="text-sm text-gray-500">{invoice.category}</p>
                                 </div>
                                 <motion.div animate={{ rotate: expandedInvoiceId === invoice.id ? 180 : 0 }}><ChevronDown /></motion.div>
@@ -462,7 +470,7 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
                                              invoice.lineItems.map((item, index) => (
                                                  <div key={index} className="flex justify-between">
                                                      <span>{item.description} (x{item.quantity || 1})</span>
-                                                     <span>${(parseFloat(item.price) || 0).toFixed(2)}</span>
+                                                     <span>{getCurrencySymbol(invoice.currency)}{(parseFloat(item.price) || 0).toFixed(2)}</span>
                                                  </div>
                                              ))
                                          ) : (
@@ -480,44 +488,38 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
     );
 };
 
-const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }) => {
+const ScanScreen = ({ db, userId, setActiveScreen, setNotification }) => {
     const [invoiceData, setInvoiceData] = useState({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], rawText: '', currency: 'USD' });
     const [imageUri, setImageUri] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [ocrProgress, setOcrProgress] = useState({ status: '', progress: 0 });
     const fileInputRef = useRef(null);
     
-    const runSmartOCR = async (file) => {
-        // eslint-disable-next-line no-undef
-        if (!file || !window.Tesseract) return;
+    const processImageWithAI = async (file) => {
+        if (!file) return;
         setIsProcessing(true);
         try {
-            setOcrProgress({ status: 'Reading text from image...', progress: 0 });
-            // eslint-disable-next-line no-undef
-            const worker = await Tesseract.createWorker('eng', 1, { logger: m => { if (m.status === 'recognizing text') setOcrProgress(p => ({ ...p, progress: parseInt(m.progress * 100) })) } });
-            // eslint-disable-next-line no-undef
-            const { data: { text } } = await worker.recognize(file);
-            // eslint-disable-next-line no-undef
-            await worker.terminate();
-            setOcrProgress({ status: 'AI is analyzing the details...', progress: 100 });
-            const structuredData = await parseInvoiceWithGemini(text, setNotification);
-            if (structuredData) {
-                setInvoiceData({
-                    vendorName: structuredData.vendorName || '', totalAmount: structuredData.totalAmount || '',
-                    invoiceDate: structuredData.invoiceDate || new Date().toISOString().split('T')[0],
-                    category: structuredData.category || 'Other', lineItems: structuredData.lineItems || [],
-                    currency: structuredData.currency || 'USD',
-                    rawText: text,
-                });
-                setNotification({ text: "Invoice details extracted!", type: "success" });
-            } else {
-                setNotification({ text: "AI couldn't extract details. Please enter manually.", type: 'error' });
-                setInvoiceData({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], rawText: text, currency: 'USD' });
-            }
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async (e) => {
+                const base64ImageData = e.target.result.split(',')[1];
+                const structuredData = await parseInvoiceWithGemini(base64ImageData, setNotification);
+                if (structuredData) {
+                    setInvoiceData({
+                        vendorName: structuredData.vendorName || '', totalAmount: structuredData.totalAmount || '',
+                        invoiceDate: structuredData.invoiceDate || new Date().toISOString().split('T')[0],
+                        category: structuredData.category || 'Other', lineItems: structuredData.lineItems || [],
+                        currency: structuredData.currency || 'USD',
+                    });
+                    setNotification({ text: "Invoice details extracted!", type: "success" });
+                } else {
+                    setNotification({ text: "AI couldn't extract details. Please enter manually.", type: 'error' });
+                    setInvoiceData({ vendorName: '', totalAmount: '', invoiceDate: new Date().toISOString().split('T')[0], category: 'Other', lineItems: [], currency: 'USD' });
+                }
+                setIsProcessing(false);
+            };
         } catch (error) {
             setNotification({ text: 'Could not process image.', type: 'error' });
-        } finally {
             setIsProcessing(false);
         }
     };
@@ -525,10 +527,8 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }
     const handleImagePick = (event) => {
         const file = event.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => setImageUri(e.target.result);
-            reader.readAsDataURL(file);
-            runSmartOCR(file);
+            setImageUri(URL.createObjectURL(file));
+            processImageWithAI(file);
         }
     };
     
@@ -541,7 +541,7 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }
         }
         setIsSaving(true);
         try {
-            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/invoices`), { ...invoiceData, totalAmount: parseFloat(invoiceData.totalAmount) || 0, createdAt: serverTimestamp(), imageUrl: imageUri ? 'simulated_image_url' : null });
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/invoices`), { ...invoiceData, totalAmount: parseFloat(invoiceData.totalAmount) || 0, createdAt: serverTimestamp() });
             setNotification({text: 'Invoice saved successfully!', type: 'success'});
             setActiveScreen('Invoices');
         } catch (error) {
@@ -559,7 +559,7 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }
             <h1 className="text-4xl font-bold text-black tracking-wide">Scan Invoice</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
                 <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImagePick} className="hidden" />
-                {isProcessing ? (<div className="text-center mb-4"><Loader2 className="animate-spin text-black mx-auto" size={32} /><p className="mt-2 text-black">{ocrProgress.status} ({ocrProgress.progress}%)</p></div>)
+                {isProcessing ? (<div className="text-center mb-4"><Loader2 className="animate-spin text-black mx-auto" size={32} /><p className="mt-2 text-black">AI is analyzing the details...</p></div>)
                 : imageUri ? (
                     <div className="flex items-center space-x-4 mb-4">
                         <img src={imageUri} alt="Preview" className="w-16 h-16 rounded-lg object-cover" />
@@ -569,9 +569,9 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification, isOcrReady }
                         </div>
                     </div>
                 ) : (
-                    <motion.button whileHover={{scale: 1.02}} whileTap={{scale: 0.98}} onClick={() => fileInputRef.current.click()} disabled={!isOcrReady} className="w-full flex flex-col items-center justify-center p-8 bg-white/30 hover:bg-white/50 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 transition-colors disabled:opacity-50">
+                    <motion.button whileHover={{scale: 1.02}} whileTap={{scale: 0.98}} onClick={() => fileInputRef.current.click()} className="w-full flex flex-col items-center justify-center p-8 bg-white/30 hover:bg-white/50 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 transition-colors">
                         <Upload size={32} />
-                        <span className="mt-2 font-semibold">{isOcrReady ? 'Tap to Scan or Upload' : 'Initializing Scanner...'}</span>
+                        <span className="mt-2 font-semibold">Tap to Scan or Upload</span>
                     </motion.button>
                 )}
                 
@@ -608,7 +608,8 @@ const ChatScreen = ({ invoices, setNotification }) => {
         setUserInput('');
         setIsLoading(true);
         const prompt = `You are a helpful financial assistant AI. Answer questions about spending, and perform calculations like splitting a bill. Base your answers ONLY on the provided JSON data of invoices. If the answer isn't in the data, say so. For calculations, provide a clear breakdown.\n\nInvoice Data:\n${JSON.stringify(invoices)}\n\nUser's request: "${question}"`;
-        const aiResponse = await callGeminiAPI(prompt, setNotification);
+        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+        const aiResponse = await callGeminiAPI(payload, setNotification);
         setMessages([...newMessages, { text: aiResponse || "Sorry, I couldn't process that.", role: 'ai' }]);
         setIsLoading(false);
     };
