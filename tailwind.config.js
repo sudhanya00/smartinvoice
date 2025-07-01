@@ -1,4 +1,3 @@
-/** @type {import('tailwindcss').Config} */
 module.exports = {
     content: [
       "./src/**/*.{js,jsx,ts,tsx}",
@@ -6,13 +5,17 @@ module.exports = {
     theme: {
       extend: {
         animation: {
-          'pulse-slow': 'pulse-slow 8s infinite alternate',
-          'pulse-slow-reverse': 'pulse-slow 8s infinite alternate-reverse',
+          'pulse-slow': 'pulse-slow 20s infinite ease-in-out',
+          'pulse-slow-reverse': 'pulse-slow-reverse 20s infinite ease-in-out',
         },
-        keyframe: {
+        keyframes: {
           'pulse-slow': {
-            '0%, 100%': { opacity: 1 },
-            '50%': { opacity: 0.85 },
+            '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '0.1' },
+            '50%': { transform: 'scale(1.2) rotate(10deg)', opacity: '0.2' },
+          },
+          'pulse-slow-reverse': {
+              '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '0.2' },
+              '50%': { transform: 'scale(1.2) rotate(-10deg)', opacity: '0.1' },
           }
         }
       },

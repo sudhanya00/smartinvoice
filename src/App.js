@@ -261,22 +261,58 @@ const MainApp = ({ user }) => {
     const [invoices, setInvoices] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [notification, setNotification] = useState(null);
+    const [insights, setInsights] = useState([]);
+    const [isInsightsLoading, setIsInsightsLoading] = useState(false);
+    const prevInvoiceCount = useRef(0);
 
     useEffect(() => {
         try { setDb(getFirestore(initializeApp(firebaseConfig))); } catch (error) { console.error("Firebase init failed in MainApp:", error); }
+    }, []);
+
+    const getDashboardInsights = useCallback(async (currentInvoices) => {
+        if (currentInvoices.length < 1) {
+            setInsights([]);
+            return;
+        }
+        setIsInsightsLoading(true);
+        const prompt = `You are a financial assistant. Analyze the user's invoices. Generate 3 short, interesting insights. Ideas: mention a high-spending category, point out a potential expiring warranty, identify a new subscription, or suggest a related purchase. Format as a JSON array of strings. Example: ["Your spending on Food & Dining was highest last week.", "Your car insurance may be expiring soon."]\n\nData: ${JSON.stringify(currentInvoices)}`;
+        
+        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+        const result = await callGeminiAPI(payload, setNotification);
+        if(result){
+            try {
+                const startIndex = result.indexOf('[');
+                const endIndex = result.lastIndexOf(']');
+                if(startIndex !== -1 && endIndex !== -1) {
+                     const jsonString = result.substring(startIndex, endIndex + 1);
+                     setInsights(JSON.parse(jsonString));
+                } else {
+                     setInsights(["Could not generate insights from the response."]);
+                }
+            } catch (e) {
+                console.error("Failed to parse insights JSON", e, result);
+                setInsights(["Could not generate new insights at this time."]);
+            }
+        }
+        setIsInsightsLoading(false);
     }, []);
 
     useEffect(() => {
         if (user && db) {
             const q = query(collection(db, `artifacts/${appId}/users/${user.uid}/invoices`));
             const unsubscribe = onSnapshot(q, (snapshot) => {
-                setInvoices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                const newInvoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (newInvoices.length > prevInvoiceCount.current) {
+                    getDashboardInsights(newInvoices);
+                }
+                setInvoices(newInvoices);
+                prevInvoiceCount.current = newInvoices.length;
                 setIsLoading(false);
             }, () => setIsLoading(false));
             return () => unsubscribe();
         } else if (user) {} 
         else setIsLoading(false);
-    }, [user, db]);
+    }, [user, db, getDashboardInsights]);
 
     const renderScreen = () => (
         <AnimatePresence mode="wait">
@@ -290,7 +326,7 @@ const MainApp = ({ user }) => {
             >
                 {
                     {
-                        'Dashboard': <DashboardScreen invoices={invoices} setNotification={setNotification} />,
+                        'Dashboard': <DashboardScreen invoices={invoices} insights={insights} isInsightsLoading={isInsightsLoading} getDashboardInsights={() => getDashboardInsights(invoices)} />,
                         'Scan': <ScanScreen db={db} userId={user.uid} setActiveScreen={setActiveScreen} setNotification={setNotification} />,
                         'Invoices': <InvoicesScreen invoices={invoices} db={db} userId={user.uid} setNotification={setNotification} />,
                         'Chat': <ChatScreen invoices={invoices} setNotification={setNotification} />,
@@ -311,50 +347,7 @@ const MainApp = ({ user }) => {
     );
 };
 
-const DashboardScreen = ({ invoices, setNotification }) => {
-    const [insights, setInsights] = useState([]);
-    const [isInsightsLoading, setIsInsightsLoading] = useState(false);
-    const prevInvoiceCount = useRef(invoices.length);
-
-    const getDashboardInsights = useCallback(async () => {
-        if (invoices.length < 1) {
-            setInsights([]);
-            return;
-        }
-        setIsInsightsLoading(true);
-        const prompt = `You are a financial assistant. Analyze the user's invoices. Generate 3 short, interesting insights. Ideas: mention a high-spending category, point out a potential expiring warranty, identify a new subscription, or suggest a related purchase. Format as a JSON array of strings. Example: ["Your spending on Food & Dining was highest last week.", "Your car insurance may be expiring soon."]\n\nData: ${JSON.stringify(invoices)}`;
-        
-        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
-        const result = await callGeminiAPI(payload, setNotification);
-        if(result){
-            try {
-                const startIndex = result.indexOf('[');
-                const endIndex = result.lastIndexOf(']');
-                if(startIndex !== -1 && endIndex !== -1) {
-                     const jsonString = result.substring(startIndex, endIndex + 1);
-                     setInsights(JSON.parse(jsonString));
-                } else {
-                     setInsights(["Could not generate insights from the response."]);
-                }
-            } catch (e) {
-                console.error("Failed to parse insights JSON", e, result);
-                setInsights(["Could not generate new insights at this time."]);
-            }
-        }
-        setIsInsightsLoading(false);
-    }, [invoices, setNotification]);
-
-    useEffect(() => {
-        if (invoices.length > prevInvoiceCount.current) {
-            getDashboardInsights();
-        } else if (insights.length === 0 && invoices.length > 1) {
-            getDashboardInsights();
-        }
-        
-        prevInvoiceCount.current = invoices.length;
-
-    }, [invoices, getDashboardInsights, insights.length]);
-
+const DashboardScreen = ({ invoices, insights, isInsightsLoading, getDashboardInsights }) => {
     const totalSpent = invoices.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount) || 0), 0);
     const categoryData = Object.entries(
         invoices.reduce((acc, inv) => {
@@ -693,63 +686,33 @@ const ProfileScreen = ({ user }) => {
 };
 
 const BottomNavBar = ({ activeScreen, setActiveScreen }) => {
-  const navItems = [
-      { name: 'Dashboard', icon: LineChart },
-      { name: 'Invoices', icon: FileText },
-      { name: 'Scan', icon: Plus },
-      { name: 'Chat', icon: MessageCircle },
-      { name: 'Profile', icon: Settings }
-  ];
-
-  return (
-      <motion.div 
-          initial={{ y: 100 }} 
-          animate={{ y: 0 }} 
-          transition={{ type: "spring", stiffness: 500, damping: 50 }} 
-          className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30"
-      >
-          <div className="flex justify-around items-center max-w-lg mx-auto h-20">
-              {navItems.map((item) => {
-                  const isActive = activeScreen === item.name;
-                  
-                  if (item.name === 'Scan') {
-                      return (
-                          <div key={item.name} className="w-20 flex justify-center">
-                              <motion.button 
-                                  whileHover={{ scale: 1.1 }} 
-                                  whileTap={{ scale: 0.9 }} 
-                                  onClick={() => setActiveScreen(item.name)} 
-                                  className="-mt-12 bg-black text-white rounded-full w-20 h-20 flex items-center justify-center shadow-xl shadow-black/30 ring-4 ring-white/20"
-                              >
-                                  <item.icon size={32} />
-                              </motion.button>
-                          </div>
-                      );
-                  }
-
-                  return (
-                      <div key={item.name} className="w-20 flex justify-center">
-                          <motion.button 
-                              whileHover={{ scale: 1.1 }} 
-                              whileTap={{ scale: 0.9 }} 
-                              onClick={() => setActiveScreen(item.name)} 
-                              className={`flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-black' : 'text-gray-500 hover:text-black'}`}
-                          >
-                              <item.icon size={24} />
-                              {isActive && (
-                                  <motion.div 
-                                      layoutId="active-pill" 
-                                      className="w-1.5 h-1.5 bg-black rounded-full mt-1.5"
-                                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                  />
-                              )}
-                          </motion.button>
-                      </div>
-                  );
-              })}
-          </div>
-      </motion.div>
-  );
+    const navItems = [ { name: 'Dashboard', icon: LineChart }, { name: 'Invoices', icon: FileText }, { name: 'Scan', icon: Plus }, { name: 'Chat', icon: MessageCircle }, { name: 'Profile', icon: Settings } ];
+    return (
+        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30">
+            <div className="flex justify-around items-center max-w-lg mx-auto h-20">
+                {navItems.map((item) => {
+                    const isActive = activeScreen === item.name;
+                    if (item.name === 'Scan') {
+                        return (
+                            <div key={item.name} className="w-20 flex justify-center">
+                                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className="-mt-12 bg-black text-white rounded-full w-20 h-20 flex items-center justify-center shadow-xl shadow-black/30 ring-4 ring-white/20">
+                                    <item.icon size={32} />
+                                </motion.button>
+                            </div>
+                        );
+                    }
+                    return (
+                        <div key={item.name} className="w-20 relative flex justify-center items-center h-full">
+                             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className={`relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-black' : 'text-gray-500 hover:text-black'}`}>
+                                <item.icon size={24} className={`drop-shadow-sm ${item.name === 'Chat' && 'drop-shadow-[0_0_3px_rgba(0,0,0,0.5)]'}`}/>
+                            </motion.button>
+                            {isActive && <motion.div layoutId="active-pill" className="absolute bottom-2 w-2 h-2 bg-black rounded-full z-0"/>}
+                        </div>
+                    );
+                })}
+            </div>
+        </motion.div>
+    );
 };
 
 export default App;
