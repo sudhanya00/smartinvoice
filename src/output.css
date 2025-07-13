@@ -801,6 +801,10 @@ video {
   min-height: 100vh;
 }
 
+.min-h-0 {
+  min-height: 0px;
+}
+
 .w-12 {
   width: 3rem;
 }
@@ -835,6 +839,10 @@ video {
 
 .w-screen {
   width: 100vw;
+}
+
+.min-w-0 {
+  min-width: 0px;
 }
 
 .max-w-lg {
