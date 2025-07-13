@@ -365,10 +365,10 @@ const MainApp = ({ user }) => {
     );
 
     return (
-        <div className="bg-gray-100 text-gray-900 font-sans h-screen flex flex-col antialiased subpixel-antialiased" style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+        <div className="bg-gray-100 text-gray-900 font-sans h-screen flex flex-col antialiased" style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
             <AnimatedBackground />
             <Notification notification={notification} onDismiss={() => setNotification(null)} />
-            <main className="flex-1 overflow-y-auto p-4 md:p-6">{renderScreen()}</main>
+            <main className="flex-1 overflow-hidden">{renderScreen()}</main>
             <BottomNavBar activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
         </div>
     );
@@ -383,7 +383,7 @@ const DashboardScreen = ({ invoices, budgets, goals, alerts, insights, isInsight
     }, {});
     
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 h-full overflow-y-auto p-4 md:p-6 pb-24">
             <div className="flex justify-between items-center">
                 <h1 className="text-4xl font-bold text-black tracking-wide">Dashboard</h1>
                 <div className="flex items-center space-x-4">
@@ -556,7 +556,7 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
 
 
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 h-full overflow-y-auto p-4 md:p-6 pb-24">
             <ConfirmationModal 
                 isOpen={!!invoiceToDelete}
                 onClose={() => setInvoiceToDelete(null)}
@@ -694,7 +694,7 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification }) => {
     const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
 
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 h-full overflow-y-auto p-4 md:p-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Scan Invoice</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
                 <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImagePick} className="hidden" />
@@ -873,70 +873,72 @@ const ChatScreen = ({ invoices, budgets, goals, db, userId, setNotification }) =
     };
 
     return (
-        <div className="flex h-full space-x-0 md:space-x-4 relative pb-24">
-             <ConfirmationModal 
+        <div className="flex flex-col h-full">
+            <ConfirmationModal 
                 isOpen={!!chatToDelete}
                 onClose={() => setChatToDelete(null)}
                 onConfirm={handleDeleteChat}
                 title="Delete Chat"
                 message="Are you sure you want to permanently delete this chat session? This action cannot be undone."
             />
-            {/* Chat History Panel */}
-            <AnimatePresence>
-            {isHistoryPanelOpen && (
-                <motion.div 
-                    initial={{ x: '-100%' }}
-                    animate={{ x: 0 }}
-                    exit={{ x: '-100%' }}
-                    transition={{ duration: 0.3, ease: 'easeInOut' }}
-                    className="absolute top-0 left-0 h-full w-full md:w-1/4 md:relative bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl p-4 flex flex-col z-20"
-                >
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-lg font-bold">Chat History</h2>
-                        <button onClick={() => setIsHistoryPanelOpen(false)} className="md:hidden p-1">
-                            <X size={20}/>
+            <div className="flex flex-1 min-h-0">
+                {/* Chat History Panel */}
+                <AnimatePresence>
+                {isHistoryPanelOpen && (
+                    <motion.div 
+                        initial={{ x: '-100%' }}
+                        animate={{ x: 0 }}
+                        exit={{ x: '-100%' }}
+                        transition={{ duration: 0.3, ease: 'easeInOut' }}
+                        className="absolute top-0 left-0 h-full w-full md:w-1/4 md:relative bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl p-4 flex flex-col z-20"
+                    >
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold">Chat History</h2>
+                            <button onClick={() => setIsHistoryPanelOpen(false)} className="md:hidden p-1">
+                                <X size={20}/>
+                            </button>
+                        </div>
+                        <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} onClick={handleNewChat} className="flex items-center justify-center space-x-2 w-full px-4 py-2 mb-4 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
+                            <PlusCircle size={16} />
+                            <span>New Chat</span>
+                        </motion.button>
+                        <div className="flex-1 overflow-y-auto">
+                            {chatSessions.map(session => (
+                                <div key={session.id} onClick={() => selectChatSession(session.id)}
+                                    className={`flex justify-between items-center p-2 rounded-lg cursor-pointer truncate ${activeChatSessionId === session.id ? 'bg-black text-white' : 'hover:bg-gray-200'}`}>
+                                    <span className="truncate">{session.title}</span>
+                                    <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={(e) => {e.stopPropagation(); setChatToDelete(session.id)}} className="p-1 text-gray-400 hover:text-red-500">
+                                        <Trash2 size={14}/>
+                                    </motion.button>
+                                </div>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+                </AnimatePresence>
+
+                {/* Chat Area */}
+                <div className="flex-1 flex flex-col min-w-0">
+                    <div className="flex items-center mb-4 md:hidden">
+                        <button onClick={() => setIsHistoryPanelOpen(true)} className="p-2">
+                            <Menu size={24} />
                         </button>
                     </div>
-                    <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} onClick={handleNewChat} className="flex items-center justify-center space-x-2 w-full px-4 py-2 mb-4 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
-                        <PlusCircle size={16} />
-                        <span>New Chat</span>
-                    </motion.button>
-                    <div className="flex-1 overflow-y-auto">
-                        {chatSessions.map(session => (
-                            <div key={session.id} onClick={() => selectChatSession(session.id)}
-                                className={`flex justify-between items-center p-2 rounded-lg cursor-pointer truncate ${activeChatSessionId === session.id ? 'bg-black text-white' : 'hover:bg-gray-200'}`}>
-                                <span className="truncate">{session.title}</span>
-                                <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={(e) => {e.stopPropagation(); setChatToDelete(session.id)}} className="p-1 text-gray-400 hover:text-red-500">
-                                    <Trash2 size={14}/>
-                                </motion.button>
+                    <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 p-4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl">
+                        {messages.length === 0 && !isLoading && (
+                            <div className="text-center text-gray-500 pt-10">
+                                <MessageCircle size={48} className="mx-auto"/><p className="mt-2">Ask me anything about your finances!</p>
+                                <p className="text-xs mt-2">e.g., "How much did I spend on shopping this month?"</p>
                             </div>
-                        ))}
+                        )}
+                        <AnimatePresence>
+                        {messages.map((msg, index) => (<motion.div key={index} initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}><MarkdownRenderer text={msg.text} /></div></motion.div>))}
+                        </AnimatePresence>
+                        {isLoading && (<motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="flex justify-start"><div className="max-w-xs p-3 rounded-2xl bg-gray-200"><Loader2 className="animate-spin text-black"/></div></motion.div>)}
                     </div>
-                </motion.div>
-            )}
-            </AnimatePresence>
-
-            {/* Chat Area */}
-            <div className="flex-1 flex flex-col">
-                <div className="flex items-center mb-4 md:hidden">
-                    <button onClick={() => setIsHistoryPanelOpen(true)} className="p-2">
-                        <Menu size={24} />
-                    </button>
-                </div>
-                <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 p-4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl">
-                    {messages.length === 0 && !isLoading && (
-                        <div className="text-center text-gray-500 pt-10">
-                            <MessageCircle size={48} className="mx-auto"/><p className="mt-2">Ask me anything about your finances!</p>
-                            <p className="text-xs mt-2">e.g., "How much did I spend on shopping this month?"</p>
-                        </div>
-                    )}
-                    <AnimatePresence>
-                    {messages.map((msg, index) => (<motion.div key={index} initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}><MarkdownRenderer text={msg.text} /></div></motion.div>))}
-                    </AnimatePresence>
-                    {isLoading && (<motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="flex justify-start"><div className="max-w-xs p-3 rounded-2xl bg-gray-200"><Loader2 className="animate-spin text-black"/></div></motion.div>)}
-                </div>
-                <div className="p-4 bg-transparent">
-                    <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-lg border border-white/20 p-2 rounded-xl"><input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your spending..." className="w-full p-2 bg-transparent focus:outline-none"/><motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleSendMessage} disabled={isLoading || !activeChatSessionId} className="bg-black text-white p-2 rounded-lg disabled:bg-gray-400"><Send size={20}/></motion.button></div>
+                    <div className="p-4 bg-transparent pb-24">
+                        <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-lg border border-white/20 p-2 rounded-xl"><input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your spending..." className="w-full p-2 bg-transparent focus:outline-none"/><motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleSendMessage} disabled={isLoading || !activeChatSessionId} className="bg-black text-white p-2 rounded-lg disabled:bg-gray-400"><Send size={20}/></motion.button></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -947,7 +949,7 @@ const FinanceScreen = ({ db, userId, budgets, goals, setNotification }) => {
     const [activeTab, setActiveTab] = useState('Budgets');
     
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 h-full overflow-y-auto p-4 md:p-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Finance</h1>
             <div className="flex space-x-1 bg-white/50 backdrop-blur-lg border border-white/20 p-1 rounded-xl">
                 <button onClick={() => setActiveTab('Budgets')} className={`w-full p-2 rounded-lg font-semibold ${activeTab === 'Budgets' ? 'bg-black text-white' : 'hover:bg-gray-200/50'}`}>Budgets</button>
@@ -1171,7 +1173,7 @@ const AlertsScreen = ({ db, userId, alerts, setNotification }) => {
     };
 
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 h-full overflow-y-auto p-4 md:p-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Alerts & Reminders</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
                 <h2 className="text-lg font-semibold text-black mb-4">Add New Alert</h2>
@@ -1227,7 +1229,7 @@ const ProfileScreen = ({ user }) => {
         signOut(getAuth());
     };
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 h-full overflow-y-auto p-4 md:p-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Profile</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                  <h2 className="text-lg font-semibold text-black mb-4">Account</h2>
