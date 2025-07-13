@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, deleteDoc, orderBy, writeBatch, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, deleteDoc, orderBy, writeBatch, getDocs, updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LineChart, CreditCard, FileText, Settings, Upload, Search, Plus, X, AlertCircle, CheckCircle, Loader2, Sparkles, Trash2, Send, MessageCircle, LogOut, Eye, EyeOff, ChevronDown, RefreshCw, Download, DollarSign, PlusCircle, Target } from 'lucide-react';
+import { LineChart, CreditCard, FileText, Settings, Upload, Search, Plus, X, AlertCircle, CheckCircle, Loader2, Sparkles, Trash2, Send, MessageCircle, LogOut, Eye, EyeOff, ChevronDown, RefreshCw, Download, DollarSign, PlusCircle, Bell, Menu } from 'lucide-react';
 
 // --- Firebase Configuration for Local Development ---
 const firebaseConfigString = process.env.REACT_APP_FIREBASE_CONFIG;
@@ -260,6 +260,8 @@ const MainApp = ({ user }) => {
     const [db, setDb] = useState(null);
     const [invoices, setInvoices] = useState([]);
     const [budgets, setBudgets] = useState([]);
+    const [goals, setGoals] = useState([]);
+    const [alerts, setAlerts] = useState([]);
     const [notification, setNotification] = useState(null);
     const [insights, setInsights] = useState([]);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
@@ -301,6 +303,8 @@ const MainApp = ({ user }) => {
         if (user && db) {
             const invoicesQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/invoices`));
             const budgetsQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/budgets`));
+            const goalsQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/goals`));
+            const alertsQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/alerts`));
 
             const unsubscribeInvoices = onSnapshot(invoicesQuery, (snapshot) => {
                 const newInvoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -316,9 +320,21 @@ const MainApp = ({ user }) => {
                 setBudgets(newBudgets);
             }, (error) => console.error("Error fetching budgets:", error));
 
+            const unsubscribeGoals = onSnapshot(goalsQuery, (snapshot) => {
+                const newGoals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setGoals(newGoals);
+            });
+            
+            const unsubscribeAlerts = onSnapshot(alertsQuery, (snapshot) => {
+                const newAlerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setAlerts(newAlerts);
+            });
+
             return () => {
                 unsubscribeInvoices();
                 unsubscribeBudgets();
+                unsubscribeGoals();
+                unsubscribeAlerts();
             };
         }
     }, [user, db, getDashboardInsights]);
@@ -335,12 +351,12 @@ const MainApp = ({ user }) => {
             >
                 {
                     {
-                        'Dashboard': <DashboardScreen invoices={invoices} budgets={budgets} insights={insights} isInsightsLoading={isInsightsLoading} getDashboardInsights={() => getDashboardInsights(invoices)} setActiveScreen={setActiveScreen} />,
+                        'Dashboard': <DashboardScreen invoices={invoices} budgets={budgets} goals={goals} alerts={alerts} insights={insights} isInsightsLoading={isInsightsLoading} getDashboardInsights={() => getDashboardInsights(invoices)} setActiveScreen={setActiveScreen} />,
                         'Scan': <ScanScreen db={db} userId={user.uid} setActiveScreen={setActiveScreen} setNotification={setNotification} />,
                         'Invoices': <InvoicesScreen invoices={invoices} db={db} userId={user.uid} setNotification={setNotification} />,
-                        'Chat': <ChatScreen invoices={invoices} budgets={budgets} db={db} userId={user.uid} setNotification={setNotification} />,
-                        'Budget': <BudgetScreen db={db} userId={user.uid} budgets={budgets} setNotification={setNotification} setActiveScreen={setActiveScreen} />,
-                        'Goals': <GoalsScreen />,
+                        'Chat': <ChatScreen invoices={invoices} budgets={budgets} goals={goals} db={db} userId={user.uid} setNotification={setNotification} />,
+                        'Finance': <FinanceScreen db={db} userId={user.uid} budgets={budgets} goals={goals} setNotification={setNotification} />,
+                        'Alerts': <AlertsScreen db={db} userId={user.uid} alerts={alerts} setNotification={setNotification} />,
                         'Profile': <ProfileScreen user={user} />
                     }[activeScreen]
                 }
@@ -358,7 +374,7 @@ const MainApp = ({ user }) => {
     );
 };
 
-const DashboardScreen = ({ invoices, budgets, insights, isInsightsLoading, getDashboardInsights, setActiveScreen }) => {
+const DashboardScreen = ({ invoices, budgets, goals, alerts, insights, isInsightsLoading, getDashboardInsights, setActiveScreen }) => {
     const totalSpent = invoices.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount) || 0), 0);
     const categorySpending = invoices.reduce((acc, inv) => {
         const category = inv.category || 'Uncategorized';
@@ -370,9 +386,14 @@ const DashboardScreen = ({ invoices, budgets, insights, isInsightsLoading, getDa
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-4xl font-bold text-black tracking-wide">Dashboard</h1>
-                <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => setActiveScreen('Profile')} className="text-black hover:text-gray-700">
-                    <Settings size={24} />
-                </motion.button>
+                <div className="flex items-center space-x-4">
+                    <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => setActiveScreen('Alerts')} className="text-black hover:text-gray-700">
+                        <Bell size={24} />
+                    </motion.button>
+                    <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => setActiveScreen('Profile')} className="text-black hover:text-gray-700">
+                        <Settings size={24} />
+                    </motion.button>
+                </div>
             </div>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                 <div className="flex justify-between items-center mb-3">
@@ -408,10 +429,25 @@ const DashboardScreen = ({ invoices, budgets, insights, isInsightsLoading, getDa
                 </div>
             </div>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Upcoming Reminders</h2>
+                <div className="space-y-3">
+                    {alerts.filter(a => !a.paid).length > 0 ? alerts.filter(a => !a.paid).map((alert) => (
+                        <div key={alert.id} className="flex justify-between items-center p-3 bg-white/30 rounded-lg">
+                            <div>
+                                <p className="font-semibold">{alert.name}</p>
+                                <p className="text-sm text-gray-600">{new Date(alert.dueDate.seconds * 1000).toLocaleDateString()}</p>
+                            </div>
+                            <p className="font-bold text-lg text-black">{getCurrencySymbol(alert.currency)}{alert.amount.toFixed(2)}</p>
+                        </div>
+                    )) : <p className="text-center text-sm text-gray-500 py-5">No upcoming alerts.</p>}
+                </div>
+            </div>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                 <h2 className="text-lg font-semibold text-black mb-4">Budget Progress</h2>
                 <div className="space-y-3">
                     {budgets.length > 0 ? budgets.map((budget) => {
-                        const spent = categorySpending[budget.category] || 0;
+                        const isOverall = budget.category === 'Overall';
+                        const spent = isOverall ? totalSpent : (categorySpending[budget.category] || 0);
                         const budgetAmount = budget.amount || 0;
                         const progress = budgetAmount > 0 ? Math.min((spent / budgetAmount) * 100, 100) : 0;
                         const isOverBudget = spent > budgetAmount;
@@ -428,7 +464,28 @@ const DashboardScreen = ({ invoices, budgets, insights, isInsightsLoading, getDa
                                 </div>
                             </div>
                         )
-                    }) : <p className="text-center text-sm text-gray-500 py-5">No budgets set yet. Go to the Budget tab to create one.</p>}
+                    }) : <p className="text-center text-sm text-gray-500 py-5">No budgets set yet. Go to the Finance tab to create one.</p>}
+                </div>
+            </div>
+             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Goal Progress</h2>
+                <div className="space-y-3">
+                    {goals.length > 0 ? goals.map((goal) => {
+                        const progress = goal.targetAmount > 0 ? Math.min((goal.savedAmount / goal.targetAmount) * 100, 100) : 0;
+                        return (
+                            <div key={goal.id}>
+                                <div className="flex justify-between items-center mb-1 text-sm">
+                                    <span className="font-medium text-gray-700">{goal.name}</span>
+                                    <span className="font-semibold text-gray-500">
+                                        {getCurrencySymbol(goal.currency || 'USD')}{goal.savedAmount.toFixed(2)} / {getCurrencySymbol(goal.currency || 'USD')}{goal.targetAmount.toFixed(2)}
+                                    </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div className="bg-green-500 h-2 rounded-full" style={{ width: `${progress}%` }}></div>
+                                </div>
+                            </div>
+                        )
+                    }) : <p className="text-center text-sm text-gray-500 py-5">No goals set yet. Go to the Finance tab to create one.</p>}
                 </div>
             </div>
         </div>
@@ -509,9 +566,9 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
             />
             <div className="flex justify-between items-center">
               <h1 className="text-4xl font-bold text-black tracking-wide">Invoices</h1>
-              <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleDownloadCsv} className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
+              <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleDownloadCsv} className="flex items-center justify-center md:space-x-2 md:px-4 md:py-2 p-2 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
                 <Download size={16} />
-                <span>Download as CSV</span>
+                <span className="hidden md:inline">Download as CSV</span>
               </motion.button>
             </div>
             <div className="relative">
@@ -688,7 +745,7 @@ const MarkdownRenderer = ({ text }) => {
     return <p className="text-sm whitespace-pre-wrap">{renderText()}</p>;
 };
 
-const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
+const ChatScreen = ({ invoices, budgets, goals, db, userId, setNotification }) => {
     const [chatSessions, setChatSessions] = useState([]);
     const [activeChatSessionId, setActiveChatSessionId] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -696,22 +753,40 @@ const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
     const [isLoading, setIsLoading] = useState(false);
     const chatContainerRef = useRef(null);
     const [chatToDelete, setChatToDelete] = useState(null);
+    const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(window.innerWidth > 768);
+    const [initialChatCreated, setInitialChatCreated] = useState(false);
 
-    // Fetch chat sessions
+    const handleNewChat = useCallback(async () => {
+        const newChatSession = {
+            createdAt: serverTimestamp(),
+            title: "New Chat..."
+        };
+        const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chats`), newChatSession);
+        setActiveChatSessionId(docRef.id);
+        if (window.innerWidth <= 768) {
+            setIsHistoryPanelOpen(false);
+        }
+    }, [db, userId]);
+
+    // Fetch chat sessions and create one if none exist
     useEffect(() => {
         if (!db || !userId) return;
         const q = query(collection(db, `artifacts/${appId}/users/${userId}/chats`), orderBy('createdAt', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const sessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setChatSessions(sessions);
-            if (!activeChatSessionId && sessions.length > 0) {
-                setActiveChatSessionId(sessions[0].id);
-            } else if (sessions.length === 0) {
-                setActiveChatSessionId(null);
+            
+            if (!initialChatCreated && sessions.length === 0 && !snapshot.metadata.hasPendingWrites) {
+                handleNewChat();
+                setInitialChatCreated(true);
+            } else {
+                 setChatSessions(sessions);
+                if (!activeChatSessionId && sessions.length > 0) {
+                    setActiveChatSessionId(sessions[0].id);
+                }
             }
         });
         return () => unsubscribe();
-    }, [db, userId, activeChatSessionId]);
+    }, [db, userId, initialChatCreated, activeChatSessionId, handleNewChat]);
 
     // Fetch messages for the active session
     useEffect(() => {
@@ -731,14 +806,12 @@ const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
     useEffect(() => {
         if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }, [messages]);
-    
-    const handleNewChat = async () => {
-        const newChatSession = {
-            createdAt: serverTimestamp(),
-            title: `Chat ${new Date().toLocaleString()}`
-        };
-        const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chats`), newChatSession);
-        setActiveChatSessionId(docRef.id);
+
+    const selectChatSession = (sessionId) => {
+        setActiveChatSessionId(sessionId);
+        if (window.innerWidth <= 768) {
+            setIsHistoryPanelOpen(false);
+        }
     };
 
     const handleDeleteChat = async () => {
@@ -762,13 +835,29 @@ const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
         }
     };
 
+    const generateChatTitle = async (sessionId, firstMessage) => {
+        const prompt = `Generate a very short, 3-4 word title for a chat that starts with this message: "${firstMessage}".`;
+        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+        const title = await callGeminiAPI(payload, setNotification);
+        if (title) {
+            const chatDocRef = doc(db, `artifacts/${appId}/users/${userId}/chats`, sessionId);
+            await updateDoc(chatDocRef, { title: title.replace(/"/g, '') });
+        }
+    }
+
     const handleSendMessage = async () => {
         if (!userInput.trim() || isLoading || !activeChatSessionId) return;
         
+        const isFirstMessage = messages.length === 0;
+
         const userMessage = { text: userInput, role: 'user', createdAt: serverTimestamp() };
         setUserInput('');
         await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chats/${activeChatSessionId}/messages`), userMessage);
         
+        if (isFirstMessage) {
+            generateChatTitle(activeChatSessionId, userMessage.text);
+        }
+
         setIsLoading(true);
 
         const currentMessages = [...messages, userMessage];
@@ -784,7 +873,7 @@ const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
     };
 
     return (
-        <div className="flex h-full space-x-4">
+        <div className="flex h-full space-x-0 md:space-x-4 relative">
              <ConfirmationModal 
                 isOpen={!!chatToDelete}
                 onClose={() => setChatToDelete(null)}
@@ -793,27 +882,47 @@ const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
                 message="Are you sure you want to permanently delete this chat session? This action cannot be undone."
             />
             {/* Chat History Panel */}
-            <div className="w-1/4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl p-4 flex flex-col">
-                <h2 className="text-lg font-bold mb-4">Chat History</h2>
-                <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} onClick={handleNewChat} className="flex items-center justify-center space-x-2 w-full px-4 py-2 mb-4 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
-                    <PlusCircle size={16} />
-                    <span>New Chat</span>
-                </motion.button>
-                <div className="flex-1 overflow-y-auto">
-                    {chatSessions.map(session => (
-                        <div key={session.id} onClick={() => setActiveChatSessionId(session.id)}
-                             className={`flex justify-between items-center p-2 rounded-lg cursor-pointer truncate ${activeChatSessionId === session.id ? 'bg-black text-white' : 'hover:bg-gray-200'}`}>
-                            <span className="truncate">{session.title}</span>
-                             <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={(e) => {e.stopPropagation(); setChatToDelete(session.id)}} className="p-1 text-gray-400 hover:text-red-500">
-                                <Trash2 size={14}/>
-                            </motion.button>
-                        </div>
-                    ))}
-                </div>
-            </div>
+            <AnimatePresence>
+            {isHistoryPanelOpen && (
+                <motion.div 
+                    initial={{ x: '-100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '-100%' }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="absolute top-0 left-0 h-full w-full md:w-1/4 md:relative bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl p-4 flex flex-col z-20"
+                >
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-bold">Chat History</h2>
+                        <button onClick={() => setIsHistoryPanelOpen(false)} className="md:hidden p-1">
+                            <X size={20}/>
+                        </button>
+                    </div>
+                    <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} onClick={handleNewChat} className="flex items-center justify-center space-x-2 w-full px-4 py-2 mb-4 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
+                        <PlusCircle size={16} />
+                        <span>New Chat</span>
+                    </motion.button>
+                    <div className="flex-1 overflow-y-auto">
+                        {chatSessions.map(session => (
+                            <div key={session.id} onClick={() => selectChatSession(session.id)}
+                                className={`flex justify-between items-center p-2 rounded-lg cursor-pointer truncate ${activeChatSessionId === session.id ? 'bg-black text-white' : 'hover:bg-gray-200'}`}>
+                                <span className="truncate">{session.title}</span>
+                                <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={(e) => {e.stopPropagation(); setChatToDelete(session.id)}} className="p-1 text-gray-400 hover:text-red-500">
+                                    <Trash2 size={14}/>
+                                </motion.button>
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+            </AnimatePresence>
 
             {/* Chat Area */}
             <div className="flex-1 flex flex-col">
+                <div className="flex items-center mb-4 md:hidden">
+                    <button onClick={() => setIsHistoryPanelOpen(true)} className="p-2">
+                        <Menu size={24} />
+                    </button>
+                </div>
                 <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 p-4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl">
                     {messages.length === 0 && !isLoading && (
                         <div className="text-center text-gray-500 pt-10">
@@ -834,12 +943,27 @@ const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
     );
 };
 
-const BudgetScreen = ({ db, userId, budgets, setNotification, setActiveScreen }) => {
+const FinanceScreen = ({ db, userId, budgets, goals, setNotification }) => {
+    const [activeTab, setActiveTab] = useState('Budgets');
+    
+    return (
+        <div className="space-y-6">
+            <h1 className="text-4xl font-bold text-black tracking-wide">Finance</h1>
+            <div className="flex space-x-1 bg-white/50 backdrop-blur-lg border border-white/20 p-1 rounded-xl">
+                <button onClick={() => setActiveTab('Budgets')} className={`w-full p-2 rounded-lg font-semibold ${activeTab === 'Budgets' ? 'bg-black text-white' : 'hover:bg-gray-200/50'}`}>Budgets</button>
+                <button onClick={() => setActiveTab('Goals')} className={`w-full p-2 rounded-lg font-semibold ${activeTab === 'Goals' ? 'bg-black text-white' : 'hover:bg-gray-200/50'}`}>Goals</button>
+            </div>
+            {activeTab === 'Budgets' ? <BudgetScreen db={db} userId={userId} budgets={budgets} setNotification={setNotification} /> : <GoalsScreen db={db} userId={userId} goals={goals} setNotification={setNotification} />}
+        </div>
+    );
+};
+
+const BudgetScreen = ({ db, userId, budgets, setNotification }) => {
     const [category, setCategory] = useState('Food & Dining');
     const [amount, setAmount] = useState('');
     const [currency, setCurrency] = useState('USD');
     const [isSaving, setIsSaving] = useState(false);
-    const defaultCategories = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Healthcare', 'Entertainment', 'Other'];
+    const defaultCategories = ['Overall', 'Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Healthcare', 'Entertainment', 'Other'];
     const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
 
     const handleAddBudget = async (e) => {
@@ -876,7 +1000,6 @@ const BudgetScreen = ({ db, userId, budgets, setNotification, setActiveScreen })
 
     return (
         <div className="space-y-6">
-            <h1 className="text-4xl font-bold text-black tracking-wide">Budgets</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
                 <h2 className="text-lg font-semibold text-black mb-4">Add New Budget</h2>
                 <form onSubmit={handleAddBudget} className="space-y-4">
@@ -912,27 +1035,192 @@ const BudgetScreen = ({ db, userId, budgets, setNotification, setActiveScreen })
                     )) : <p className="text-center text-sm text-gray-500 py-5">No budgets set.</p>}
                 </div>
             </div>
-            <div className="text-center">
-                 <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} onClick={() => setActiveScreen('Goals')} className="flex items-center justify-center space-x-2 w-full px-4 py-2 mt-4 rounded-lg bg-white/50 text-black font-semibold hover:bg-gray-200/50">
-                    <Target size={16} />
-                    <span>Set Financial Goals</span>
-                </motion.button>
+        </div>
+    );
+}
+
+const GoalsScreen = ({ db, userId, goals, setNotification }) => {
+    const [name, setName] = useState('');
+    const [targetAmount, setTargetAmount] = useState('');
+    const [currency, setCurrency] = useState('USD');
+    const [isSaving, setIsSaving] = useState(false);
+    const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
+
+    const handleAddGoal = async (e) => {
+        e.preventDefault();
+        if (!name || !targetAmount || isNaN(parseFloat(targetAmount))) {
+            setNotification({ text: "Please enter a valid name and target amount.", type: 'error' });
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/goals`), {
+                name,
+                targetAmount: parseFloat(targetAmount),
+                savedAmount: 0,
+                currency,
+                createdAt: serverTimestamp()
+            });
+            setNotification({ text: "Goal added successfully!", type: 'success' });
+            setName('');
+            setTargetAmount('');
+        } catch (error) {
+            setNotification({ text: `Failed to add goal: ${error.message}`, type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+    
+    const handleDeleteGoal = async (goalId) => {
+        try {
+            await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/goals`, goalId));
+            setNotification({ text: "Goal deleted successfully", type: 'success' });
+        } catch (error) {
+            setNotification({ text: "Failed to delete goal.", type: 'error' });
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Add New Goal</h2>
+                <form onSubmit={handleAddGoal} className="space-y-4">
+                    <div>
+                        <label className="text-sm font-medium text-gray-600">Goal Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" placeholder="e.g., New Car" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-2"><label className="text-sm font-medium text-gray-600">Target Amount</label><input type="number" value={targetAmount} onChange={e => setTargetAmount(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" placeholder="e.g., 20000" /></div>
+                        <div><label className="text-sm font-medium text-gray-600">Currency</label><select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg">{currencies.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    </div>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={isSaving} className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-400 shadow-lg">
+                        {isSaving ? 'Saving...' : 'Add Goal'}
+                    </motion.button>
+                </form>
+            </div>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Your Goals</h2>
+                <div className="space-y-3">
+                    {goals.length > 0 ? goals.map(goal => {
+                        const progress = goal.targetAmount > 0 ? Math.min((goal.savedAmount / goal.targetAmount) * 100, 100) : 0;
+                        return (
+                            <div key={goal.id} className="p-3 bg-white/30 rounded-lg">
+                                <div className="flex justify-between items-center mb-1 text-sm">
+                                    <span className="font-semibold">{goal.name}</span>
+                                    <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => handleDeleteGoal(goal.id)} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                        <Trash2 size={16}/>
+                                    </motion.button>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                    <div className="bg-green-500 h-2 rounded-full" style={{ width: `${progress}%` }}></div>
+                                </div>
+                                <p className="text-xs text-gray-600 text-right">{getCurrencySymbol(goal.currency || 'USD')}{goal.savedAmount.toFixed(2)} / {getCurrencySymbol(goal.currency || 'USD')}{goal.targetAmount.toFixed(2)}</p>
+                            </div>
+                        )
+                    }) : <p className="text-center text-sm text-gray-500 py-5">No goals set.</p>}
+                </div>
             </div>
         </div>
     );
 }
 
-const GoalsScreen = () => {
+const AlertsScreen = ({ db, userId, alerts, setNotification }) => {
+    const [name, setName] = useState('');
+    const [amount, setAmount] = useState('');
+    const [dueDate, setDueDate] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [currency, setCurrency] = useState('USD');
+    const [isRecurring, setIsRecurring] = useState(false);
+    const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
+
+    const handleAddAlert = async (e) => {
+        e.preventDefault();
+        if (!name || !amount || isNaN(parseFloat(amount)) || !dueDate) {
+            setNotification({ text: "Please fill all fields correctly.", type: 'error' });
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/alerts`), {
+                name,
+                amount: parseFloat(amount),
+                dueDate: new Date(dueDate),
+                currency,
+                isRecurring,
+                paid: false,
+                createdAt: serverTimestamp()
+            });
+            setNotification({ text: "Alert added successfully!", type: 'success' });
+            setName('');
+            setAmount('');
+            setDueDate('');
+        } catch (error) {
+            setNotification({ text: `Failed to add alert: ${error.message}`, type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteAlert = async (alertId) => {
+        try {
+            await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/alerts`, alertId));
+            setNotification({ text: "Alert deleted successfully", type: 'success' });
+        } catch (error) {
+            setNotification({ text: "Failed to delete alert.", type: 'error' });
+        }
+    };
+
     return (
-      <div className="space-y-6">
-        <h1 className="text-4xl font-bold text-black tracking-wide">Goals</h1>
-        <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl text-center">
-          <p className="text-lg font-semibold text-black">Financial Goals are coming soon!</p>
-          <p className="text-sm text-gray-600 mt-2">Here you will be able to set, track, and manage your financial goals.</p>
+        <div className="space-y-6">
+            <h1 className="text-4xl font-bold text-black tracking-wide">Alerts & Reminders</h1>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Add New Alert</h2>
+                <form onSubmit={handleAddAlert} className="space-y-4">
+                    <div>
+                        <label className="text-sm font-medium text-gray-600">Alert Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" placeholder="e.g., Rent" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-2"><label className="text-sm font-medium text-gray-600">Amount</label><input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" placeholder="e.g., 1200" /></div>
+                        <div><label className="text-sm font-medium text-gray-600">Currency</label><select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg">{currencies.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-gray-600">Due Date</label>
+                        <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-gray-600">Recurring</label>
+                        <div onClick={() => setIsRecurring(!isRecurring)} className={`w-12 h-6 rounded-full p-1 flex items-center cursor-pointer ${isRecurring ? 'bg-black' : 'bg-gray-300'}`}>
+                            <motion.div layout className={`w-4 h-4 bg-white rounded-full`} />
+                        </div>
+                    </div>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={isSaving} className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-400 shadow-lg">
+                        {isSaving ? 'Saving...' : 'Add Alert'}
+                    </motion.button>
+                </form>
+            </div>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Your Alerts</h2>
+                <div className="space-y-3">
+                    {alerts.length > 0 ? alerts.map(alert => (
+                        <div key={alert.id} className="flex justify-between items-center p-3 bg-white/30 rounded-lg">
+                            <div>
+                                <p className="font-semibold">{alert.name}</p>
+                                <p className="text-sm text-gray-600">{new Date(alert.dueDate.seconds * 1000).toLocaleDateString()}</p>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                                <p className="font-bold text-lg text-black">{getCurrencySymbol(alert.currency || 'USD')}{alert.amount.toFixed(2)}</p>
+                                <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => handleDeleteAlert(alert.id)} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                    <Trash2 size={16}/>
+                                </motion.button>
+                            </div>
+                        </div>
+                    )) : <p className="text-center text-sm text-gray-500 py-5">No alerts set.</p>}
+                </div>
+            </div>
         </div>
-      </div>
-    )
-}
+    );
+};
 
 const ProfileScreen = ({ user }) => {
     const handleLogout = () => {
@@ -956,7 +1244,7 @@ const BottomNavBar = ({ activeScreen, setActiveScreen }) => {
         { name: 'Dashboard', icon: LineChart }, 
         { name: 'Invoices', icon: FileText }, 
         { name: 'Chat', icon: MessageCircle }, 
-        { name: 'Budget', icon: DollarSign } 
+        { name: 'Finance', icon: DollarSign }
     ];
 
     const leftItems = navItems.slice(0, 2);
