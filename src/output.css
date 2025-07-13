@@ -1168,6 +1168,14 @@ video {
   padding-top: 0.75rem;
 }
 
+.pb-24 {
+  padding-bottom: 6rem;
+}
+
+.pb-\[env\(safe-area-inset-bottom\)\] {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 .text-left {
   text-align: left;
 }
