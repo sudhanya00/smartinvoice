@@ -368,7 +368,7 @@ const MainApp = ({ user }) => {
         <div className="bg-gray-100 text-gray-900 font-sans h-screen flex flex-col antialiased subpixel-antialiased" style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
             <AnimatedBackground />
             <Notification notification={notification} onDismiss={() => setNotification(null)} />
-            <main className="flex-1 overflow-y-auto p-4 md:p-6">{renderScreen()}</main>
+            <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">{renderScreen()}</main>
             <BottomNavBar activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
         </div>
     );
@@ -1251,7 +1251,7 @@ const BottomNavBar = ({ activeScreen, setActiveScreen }) => {
     const rightItems = navItems.slice(2, 4);
 
     return (
-        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30">
+        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30 pb-[env(safe-area-inset-bottom)]">
             <div className="flex justify-around items-center max-w-lg mx-auto h-20">
                 {leftItems.map((item) => {
                     const isActive = activeScreen === item.name;
