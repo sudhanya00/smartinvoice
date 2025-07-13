@@ -1,24 +1,33 @@
+/** @type {import('tailwindcss').Config} */
 module.exports = {
-    content: [
-      "./src/**/*.{js,jsx,ts,tsx}",
-    ],
-    theme: {
-      extend: {
-        animation: {
-          'pulse-slow': 'pulse-slow 20s infinite ease-in-out',
-          'pulse-slow-reverse': 'pulse-slow-reverse 20s infinite ease-in-out',
-        },
-        keyframes: {
-          'pulse-slow': {
-            '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '0.1' },
-            '50%': { transform: 'scale(1.2) rotate(10deg)', opacity: '0.2' },
+  content: [
+    "./src/**/*.{js,jsx,ts,tsx}",
+  ],
+  theme: {
+    extend: {
+      animation: {
+        'card-glow': 'card-glow 4s ease-in-out infinite',
+        'element-glow': 'element-glow 4s ease-in-out infinite',
+      },
+      keyframes: {
+        'card-glow': {
+          '0%, 100%': { 
+            boxShadow: '0 0 20px rgba(0, 0, 0, 0.05), 0 0 40px rgba(0, 0, 0, 0.02)',
           },
-          'pulse-slow-reverse': {
-              '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '0.2' },
-              '50%': { transform: 'scale(1.2) rotate(-10deg)', opacity: '0.1' },
-          }
+          '50%': { 
+            boxShadow: '0 0 30px rgba(0, 0, 0, 0.1), 0 0 50px rgba(0, 0, 0, 0.05)',
+          },
+        },
+        'element-glow': {
+            '0%, 100%': {
+                filter: 'drop-shadow(0 0 2px rgba(0, 0, 0, 0.3))',
+            },
+            '50%': {
+                filter: 'drop-shadow(0 0 4px rgba(0, 0, 0, 0.4))',
+            }
         }
       },
     },
-    plugins: [],
-  }
+  },
+  plugins: [],
+}

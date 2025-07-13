@@ -695,6 +695,10 @@ video {
   margin-top: 1.5rem;
 }
 
+.mt-4 {
+  margin-top: 1rem;
+}
+
 .flex {
   display: flex;
 }
@@ -771,6 +775,10 @@ video {
   width: 100vw;
 }
 
+.w-1\/4 {
+  width: 25%;
+}
+
 .max-w-lg {
   max-width: 32rem;
 }
@@ -804,38 +812,6 @@ video {
 
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse-slow {
-  0%, 100% {
-    transform: scale(1) rotate(0deg);
-    opacity: 0.1;
-  }
-
-  50% {
-    transform: scale(1.2) rotate(10deg);
-    opacity: 0.2;
-  }
-}
-
-.animate-pulse-slow {
-  animation: pulse-slow 20s infinite ease-in-out;
-}
-
-@keyframes pulse-slow-reverse {
-  0%, 100% {
-    transform: scale(1) rotate(0deg);
-    opacity: 0.2;
-  }
-
-  50% {
-    transform: scale(1.2) rotate(-10deg);
-    opacity: 0.1;
-  }
-}
-
-.animate-pulse-slow-reverse {
-  animation: pulse-slow-reverse 20s infinite ease-in-out;
 }
 
 @keyframes spin {
@@ -944,6 +920,12 @@ video {
 
 .overflow-y-auto {
   overflow-y: auto;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .whitespace-pre-wrap {
@@ -1391,6 +1373,15 @@ video {
   background-color: rgb(255 255 255 / 0.5);
 }
 
+.hover\:bg-gray-200:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(229 231 235 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-gray-200\/50:hover {
+  background-color: rgb(229 231 235 / 0.5);
+}
+
 .hover\:text-black:hover {
   --tw-text-opacity: 1;
   color: rgb(0 0 0 / var(--tw-text-opacity, 1));
@@ -1409,6 +1400,11 @@ video {
 .hover\:text-red-700:hover {
   --tw-text-opacity: 1;
   color: rgb(185 28 28 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-red-500:hover {
+  --tw-text-opacity: 1;
+  color: rgb(239 68 68 / var(--tw-text-opacity, 1));
 }
 
 .hover\:underline:hover {

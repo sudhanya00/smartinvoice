@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, doc, deleteDoc, orderBy, writeBatch, getDocs } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LineChart, CreditCard, FileText, Settings, Upload, Search, Plus, X, AlertCircle, CheckCircle, Loader2, Sparkles, Trash2, Send, MessageCircle, LogOut, Eye, EyeOff, ChevronDown, RefreshCw } from 'lucide-react';
+import { LineChart, CreditCard, FileText, Settings, Upload, Search, Plus, X, AlertCircle, CheckCircle, Loader2, Sparkles, Trash2, Send, MessageCircle, LogOut, Eye, EyeOff, ChevronDown, RefreshCw, Download, DollarSign, PlusCircle, Target } from 'lucide-react';
 
 // --- Firebase Configuration for Local Development ---
 const firebaseConfigString = process.env.REACT_APP_FIREBASE_CONFIG;
@@ -259,7 +259,7 @@ const MainApp = ({ user }) => {
     const [activeScreen, setActiveScreen] = useState('Dashboard');
     const [db, setDb] = useState(null);
     const [invoices, setInvoices] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [budgets, setBudgets] = useState([]);
     const [notification, setNotification] = useState(null);
     const [insights, setInsights] = useState([]);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
@@ -299,19 +299,28 @@ const MainApp = ({ user }) => {
 
     useEffect(() => {
         if (user && db) {
-            const q = query(collection(db, `artifacts/${appId}/users/${user.uid}/invoices`));
-            const unsubscribe = onSnapshot(q, (snapshot) => {
+            const invoicesQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/invoices`));
+            const budgetsQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/budgets`));
+
+            const unsubscribeInvoices = onSnapshot(invoicesQuery, (snapshot) => {
                 const newInvoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 if (newInvoices.length > prevInvoiceCount.current) {
                     getDashboardInsights(newInvoices);
                 }
                 setInvoices(newInvoices);
                 prevInvoiceCount.current = newInvoices.length;
-                setIsLoading(false);
-            }, () => setIsLoading(false));
-            return () => unsubscribe();
-        } else if (user) {} 
-        else setIsLoading(false);
+            }, (error) => console.error("Error fetching invoices:", error));
+            
+            const unsubscribeBudgets = onSnapshot(budgetsQuery, (snapshot) => {
+                const newBudgets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setBudgets(newBudgets);
+            }, (error) => console.error("Error fetching budgets:", error));
+
+            return () => {
+                unsubscribeInvoices();
+                unsubscribeBudgets();
+            };
+        }
     }, [user, db, getDashboardInsights]);
 
     const renderScreen = () => (
@@ -326,10 +335,12 @@ const MainApp = ({ user }) => {
             >
                 {
                     {
-                        'Dashboard': <DashboardScreen invoices={invoices} insights={insights} isInsightsLoading={isInsightsLoading} getDashboardInsights={() => getDashboardInsights(invoices)} />,
+                        'Dashboard': <DashboardScreen invoices={invoices} budgets={budgets} insights={insights} isInsightsLoading={isInsightsLoading} getDashboardInsights={() => getDashboardInsights(invoices)} setActiveScreen={setActiveScreen} />,
                         'Scan': <ScanScreen db={db} userId={user.uid} setActiveScreen={setActiveScreen} setNotification={setNotification} />,
                         'Invoices': <InvoicesScreen invoices={invoices} db={db} userId={user.uid} setNotification={setNotification} />,
-                        'Chat': <ChatScreen invoices={invoices} setNotification={setNotification} />,
+                        'Chat': <ChatScreen invoices={invoices} budgets={budgets} db={db} userId={user.uid} setNotification={setNotification} />,
+                        'Budget': <BudgetScreen db={db} userId={user.uid} budgets={budgets} setNotification={setNotification} setActiveScreen={setActiveScreen} />,
+                        'Goals': <GoalsScreen />,
                         'Profile': <ProfileScreen user={user} />
                     }[activeScreen]
                 }
@@ -347,18 +358,22 @@ const MainApp = ({ user }) => {
     );
 };
 
-const DashboardScreen = ({ invoices, insights, isInsightsLoading, getDashboardInsights }) => {
+const DashboardScreen = ({ invoices, budgets, insights, isInsightsLoading, getDashboardInsights, setActiveScreen }) => {
     const totalSpent = invoices.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount) || 0), 0);
-    const categoryData = Object.entries(
-        invoices.reduce((acc, inv) => {
-            acc[inv.category || 'Uncategorized'] = (acc[inv.category || 'Uncategorized'] || 0) + (parseFloat(inv.totalAmount) || 0);
-            return acc;
-        }, {})
-    ).sort(([,a],[,b]) => b-a);
-
+    const categorySpending = invoices.reduce((acc, inv) => {
+        const category = inv.category || 'Uncategorized';
+        acc[category] = (acc[category] || 0) + (parseFloat(inv.totalAmount) || 0);
+        return acc;
+    }, {});
+    
     return (
         <div className="space-y-6">
-            <h1 className="text-4xl font-bold text-black tracking-wide">Dashboard</h1>
+            <div className="flex justify-between items-center">
+                <h1 className="text-4xl font-bold text-black tracking-wide">Dashboard</h1>
+                <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => setActiveScreen('Profile')} className="text-black hover:text-gray-700">
+                    <Settings size={24} />
+                </motion.button>
+            </div>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                 <div className="flex justify-between items-center mb-3">
                     <h2 className="text-lg font-semibold flex items-center text-black">
@@ -393,17 +408,27 @@ const DashboardScreen = ({ invoices, insights, isInsightsLoading, getDashboardIn
                 </div>
             </div>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
-                <h2 className="text-lg font-semibold text-black mb-4">Top Categories</h2>
+                <h2 className="text-lg font-semibold text-black mb-4">Budget Progress</h2>
                 <div className="space-y-3">
-                    {categoryData.length > 0 ? categoryData.map(([category, amount]) => (
-                        <div key={category}>
-                            <div className="flex justify-between items-center mb-1 text-sm">
-                                <span className="font-medium text-gray-700">{category}</span>
-                                <span className="text-gray-500">{getCurrencySymbol(invoices[0]?.currency || 'USD')}{amount.toFixed(2)}</span>
+                    {budgets.length > 0 ? budgets.map((budget) => {
+                        const spent = categorySpending[budget.category] || 0;
+                        const budgetAmount = budget.amount || 0;
+                        const progress = budgetAmount > 0 ? Math.min((spent / budgetAmount) * 100, 100) : 0;
+                        const isOverBudget = spent > budgetAmount;
+                        return (
+                            <div key={budget.id}>
+                                <div className="flex justify-between items-center mb-1 text-sm">
+                                    <span className="font-medium text-gray-700">{budget.category}</span>
+                                    <span className={`font-semibold ${isOverBudget ? 'text-red-500' : 'text-gray-500'}`}>
+                                        {getCurrencySymbol(budget.currency || 'USD')}{spent.toFixed(2)} / {getCurrencySymbol(budget.currency || 'USD')}{budgetAmount.toFixed(2)}
+                                    </span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div className={`${isOverBudget ? 'bg-red-500' : 'bg-black'} h-2 rounded-full`} style={{ width: `${progress}%` }}></div>
+                                </div>
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-black h-2 rounded-full" style={{ width: `${(amount / totalSpent) * 100}%` }}></div></div>
-                        </div>
-                    )) : <p className="text-center text-sm text-gray-500 py-5">No spending data yet.</p>}
+                        )
+                    }) : <p className="text-center text-sm text-gray-500 py-5">No budgets set yet. Go to the Budget tab to create one.</p>}
                 </div>
             </div>
         </div>
@@ -436,6 +461,41 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
             setInvoiceToDelete(null); 
         }
     };
+    
+    const handleDownloadCsv = () => {
+        if (invoices.length === 0) {
+            setNotification({ text: "No invoices to download.", type: 'info' });
+            return;
+        }
+
+        const headers = ['Vendor Name', 'Date', 'Category', 'Total Amount', 'Currency', 'Description'];
+        const csvRows = [headers.join(',')];
+
+        invoices.forEach(invoice => {
+            const row = [
+                `"${invoice.vendorName || ''}"`,
+                `"${invoice.invoiceDate || ''}"`,
+                `"${invoice.category || ''}"`,
+                invoice.totalAmount || 0,
+                `"${invoice.currency || ''}"`,
+                `"${(invoice.shortDescription || '').replace(/"/g, '""')}"`
+            ];
+            csvRows.push(row.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'invoices.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    };
 
 
     return (
@@ -447,7 +507,13 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
                 title="Delete Invoice"
                 message="Are you sure you want to permanently delete this invoice? This action cannot be undone."
             />
-            <h1 className="text-4xl font-bold text-black tracking-wide">Invoices</h1>
+            <div className="flex justify-between items-center">
+              <h1 className="text-4xl font-bold text-black tracking-wide">Invoices</h1>
+              <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleDownloadCsv} className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
+                <Download size={16} />
+                <span>Download as CSV</span>
+              </motion.button>
+            </div>
             <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <input type="text" placeholder="Search invoices..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
@@ -622,51 +688,251 @@ const MarkdownRenderer = ({ text }) => {
     return <p className="text-sm whitespace-pre-wrap">{renderText()}</p>;
 };
 
-const ChatScreen = ({ invoices, setNotification }) => {
+const ChatScreen = ({ invoices, budgets, db, userId, setNotification }) => {
+    const [chatSessions, setChatSessions] = useState([]);
+    const [activeChatSessionId, setActiveChatSessionId] = useState(null);
     const [messages, setMessages] = useState([]);
     const [userInput, setUserInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const chatContainerRef = useRef(null);
+    const [chatToDelete, setChatToDelete] = useState(null);
+
+    // Fetch chat sessions
+    useEffect(() => {
+        if (!db || !userId) return;
+        const q = query(collection(db, `artifacts/${appId}/users/${userId}/chats`), orderBy('createdAt', 'desc'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const sessions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setChatSessions(sessions);
+            if (!activeChatSessionId && sessions.length > 0) {
+                setActiveChatSessionId(sessions[0].id);
+            } else if (sessions.length === 0) {
+                setActiveChatSessionId(null);
+            }
+        });
+        return () => unsubscribe();
+    }, [db, userId, activeChatSessionId]);
+
+    // Fetch messages for the active session
+    useEffect(() => {
+        if (!db || !userId || !activeChatSessionId) {
+            setMessages([]);
+            return;
+        };
+        const messagesQuery = query(collection(db, `artifacts/${appId}/users/${userId}/chats/${activeChatSessionId}/messages`), orderBy('createdAt'));
+        const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+            const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setMessages(newMessages);
+        });
+        return () => unsubscribe();
+    }, [db, userId, activeChatSessionId]);
+
 
     useEffect(() => {
         if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }, [messages]);
+    
+    const handleNewChat = async () => {
+        const newChatSession = {
+            createdAt: serverTimestamp(),
+            title: `Chat ${new Date().toLocaleString()}`
+        };
+        const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chats`), newChatSession);
+        setActiveChatSessionId(docRef.id);
+    };
+
+    const handleDeleteChat = async () => {
+        if (!chatToDelete) return;
+        
+        const batch = writeBatch(db);
+        const messagesQuery = query(collection(db, `artifacts/${appId}/users/${userId}/chats/${chatToDelete}/messages`));
+        const messagesSnapshot = await getDocs(messagesQuery);
+        messagesSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        
+        const chatDocRef = doc(db, `artifacts/${appId}/users/${userId}/chats`, chatToDelete);
+        batch.delete(chatDocRef);
+        
+        await batch.commit();
+        setNotification({ text: "Chat session deleted.", type: 'success' });
+        setChatToDelete(null);
+        if(activeChatSessionId === chatToDelete) {
+            setActiveChatSessionId(null);
+        }
+    };
 
     const handleSendMessage = async () => {
-        if (!userInput.trim() || isLoading) return;
-        const newMessages = [...messages, { text: userInput, role: 'user' }];
-        setMessages(newMessages);
-        const question = userInput;
+        if (!userInput.trim() || isLoading || !activeChatSessionId) return;
+        
+        const userMessage = { text: userInput, role: 'user', createdAt: serverTimestamp() };
         setUserInput('');
+        await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chats/${activeChatSessionId}/messages`), userMessage);
+        
         setIsLoading(true);
-        const prompt = `You are a helpful financial assistant AI. Answer questions about spending, and perform calculations like splitting a bill. Base your answers ONLY on the provided JSON data of their invoices and the conversation history. If the answer isn't in the data, say so. For calculations, provide a clear breakdown. Use markdown for formatting like **bold**.\n\nConversation History:\n${JSON.stringify(messages)}\n\nInvoice Data:\n${JSON.stringify(invoices)}\n\nUser's latest request: "${question}"`;
+
+        const currentMessages = [...messages, userMessage];
+
+        const prompt = `You are a helpful financial assistant AI. Answer questions about spending, budgets, and perform calculations like splitting a bill. Base your answers ONLY on the provided JSON data of their invoices, budgets, and the current conversation history. If the answer isn't in the data, say so. For calculations, provide a clear breakdown. Use markdown for formatting like **bold**.\n\nConversation History:\n${JSON.stringify(currentMessages.map(m => ({role: m.role, text: m.text})))}\n\nInvoice Data:\n${JSON.stringify(invoices)}\n\nBudget Data:\n${JSON.stringify(budgets)}\n\nUser's latest request: "${userMessage.text}"`;
         const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
         const aiResponse = await callGeminiAPI(payload, setNotification);
-        setMessages([...newMessages, { text: aiResponse || "Sorry, I couldn't process that.", role: 'ai' }]);
+        
+        const aiMessage = { text: aiResponse || "Sorry, I couldn't process that.", role: 'ai', createdAt: serverTimestamp() };
+        await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chats/${activeChatSessionId}/messages`), aiMessage);
+
         setIsLoading(false);
     };
 
     return (
-        <div className="flex flex-col h-full">
-            <h1 className="text-4xl font-bold text-black tracking-wide mb-4 px-1">AI Chat Assistant</h1>
-            <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 p-4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl">
-                {messages.length === 0 && !isLoading && (
-                    <div className="text-center text-gray-500 pt-10">
-                        <MessageCircle size={48} className="mx-auto"/><p className="mt-2">Ask me anything about your invoices!</p>
-                        <p className="text-xs mt-2">e.g., "Split the bill from Don Cafe between 4 people"</p>
-                    </div>
-                )}
-                <AnimatePresence>
-                {messages.map((msg, index) => (<motion.div key={index} initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}><MarkdownRenderer text={msg.text} /></div></motion.div>))}
-                </AnimatePresence>
-                {isLoading && (<motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="flex justify-start"><div className="max-w-xs p-3 rounded-2xl bg-gray-200"><Loader2 className="animate-spin text-black"/></div></motion.div>)}
+        <div className="flex h-full space-x-4">
+             <ConfirmationModal 
+                isOpen={!!chatToDelete}
+                onClose={() => setChatToDelete(null)}
+                onConfirm={handleDeleteChat}
+                title="Delete Chat"
+                message="Are you sure you want to permanently delete this chat session? This action cannot be undone."
+            />
+            {/* Chat History Panel */}
+            <div className="w-1/4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl p-4 flex flex-col">
+                <h2 className="text-lg font-bold mb-4">Chat History</h2>
+                <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} onClick={handleNewChat} className="flex items-center justify-center space-x-2 w-full px-4 py-2 mb-4 rounded-lg bg-black text-white font-semibold hover:bg-gray-800">
+                    <PlusCircle size={16} />
+                    <span>New Chat</span>
+                </motion.button>
+                <div className="flex-1 overflow-y-auto">
+                    {chatSessions.map(session => (
+                        <div key={session.id} onClick={() => setActiveChatSessionId(session.id)}
+                             className={`flex justify-between items-center p-2 rounded-lg cursor-pointer truncate ${activeChatSessionId === session.id ? 'bg-black text-white' : 'hover:bg-gray-200'}`}>
+                            <span className="truncate">{session.title}</span>
+                             <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={(e) => {e.stopPropagation(); setChatToDelete(session.id)}} className="p-1 text-gray-400 hover:text-red-500">
+                                <Trash2 size={14}/>
+                            </motion.button>
+                        </div>
+                    ))}
+                </div>
             </div>
-            <div className="p-4 bg-transparent">
-                <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-lg border border-white/20 p-2 rounded-xl"><input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your spending..." className="w-full p-2 bg-transparent focus:outline-none"/><motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleSendMessage} disabled={isLoading} className="bg-black text-white p-2 rounded-lg disabled:bg-gray-400"><Send size={20}/></motion.button></div>
+
+            {/* Chat Area */}
+            <div className="flex-1 flex flex-col">
+                <div ref={chatContainerRef} className="flex-1 overflow-y-auto space-y-4 p-4 bg-white/50 backdrop-blur-lg border border-white/20 rounded-2xl">
+                    {messages.length === 0 && !isLoading && (
+                        <div className="text-center text-gray-500 pt-10">
+                            <MessageCircle size={48} className="mx-auto"/><p className="mt-2">Ask me anything about your finances!</p>
+                            <p className="text-xs mt-2">e.g., "How much did I spend on shopping this month?"</p>
+                        </div>
+                    )}
+                    <AnimatePresence>
+                    {messages.map((msg, index) => (<motion.div key={index} initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-xs md:max-w-md lg:max-w-lg p-3 rounded-2xl ${msg.role === 'user' ? 'bg-black text-white' : 'bg-gray-200 text-gray-800'}`}><MarkdownRenderer text={msg.text} /></div></motion.div>))}
+                    </AnimatePresence>
+                    {isLoading && (<motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="flex justify-start"><div className="max-w-xs p-3 rounded-2xl bg-gray-200"><Loader2 className="animate-spin text-black"/></div></motion.div>)}
+                </div>
+                <div className="p-4 bg-transparent">
+                    <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-lg border border-white/20 p-2 rounded-xl"><input type="text" value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask about your spending..." className="w-full p-2 bg-transparent focus:outline-none"/><motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={handleSendMessage} disabled={isLoading || !activeChatSessionId} className="bg-black text-white p-2 rounded-lg disabled:bg-gray-400"><Send size={20}/></motion.button></div>
+                </div>
             </div>
         </div>
     );
 };
+
+const BudgetScreen = ({ db, userId, budgets, setNotification, setActiveScreen }) => {
+    const [category, setCategory] = useState('Food & Dining');
+    const [amount, setAmount] = useState('');
+    const [currency, setCurrency] = useState('USD');
+    const [isSaving, setIsSaving] = useState(false);
+    const defaultCategories = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Healthcare', 'Entertainment', 'Other'];
+    const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
+
+    const handleAddBudget = async (e) => {
+        e.preventDefault();
+        if (!amount || isNaN(parseFloat(amount))) {
+            setNotification({ text: "Please enter a valid amount.", type: 'error' });
+            return;
+        }
+        setIsSaving(true);
+        try {
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/budgets`), {
+                category,
+                amount: parseFloat(amount),
+                currency,
+                createdAt: serverTimestamp()
+            });
+            setNotification({ text: "Budget added successfully!", type: 'success' });
+            setAmount('');
+        } catch (error) {
+            setNotification({ text: `Failed to add budget: ${error.message}`, type: 'error' });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteBudget = async (budgetId) => {
+        try {
+            await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/budgets`, budgetId));
+            setNotification({ text: "Budget deleted successfully", type: 'success' });
+        } catch (error) {
+            setNotification({ text: "Failed to delete budget.", type: 'error' });
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <h1 className="text-4xl font-bold text-black tracking-wide">Budgets</h1>
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Add New Budget</h2>
+                <form onSubmit={handleAddBudget} className="space-y-4">
+                    <div>
+                        <label className="text-sm font-medium text-gray-600">Category</label>
+                        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg">
+                            {defaultCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-2"><label className="text-sm font-medium text-gray-600">Amount</label><input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg" placeholder="e.g., 500" /></div>
+                        <div><label className="text-sm font-medium text-gray-600">Currency</label><select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full mt-1 p-3 bg-white/50 border border-white/20 rounded-lg">{currencies.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    </div>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} type="submit" disabled={isSaving} className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-800 transition-colors disabled:bg-gray-400 shadow-lg">
+                        {isSaving ? 'Saving...' : 'Add Budget'}
+                    </motion.button>
+                </form>
+            </div>
+
+            <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
+                <h2 className="text-lg font-semibold text-black mb-4">Your Budgets</h2>
+                <div className="space-y-3">
+                    {budgets.length > 0 ? budgets.map(budget => (
+                        <div key={budget.id} className="flex justify-between items-center p-3 bg-white/30 rounded-lg">
+                            <div>
+                                <p className="font-semibold">{budget.category}</p>
+                                <p className="text-sm text-gray-600">{getCurrencySymbol(budget.currency || 'USD')}{(budget.amount || 0).toFixed(2)}</p>
+                            </div>
+                            <motion.button whileHover={{scale: 1.1}} whileTap={{scale: 0.9}} onClick={() => handleDeleteBudget(budget.id)} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full">
+                                <Trash2 size={16}/>
+                            </motion.button>
+                        </div>
+                    )) : <p className="text-center text-sm text-gray-500 py-5">No budgets set.</p>}
+                </div>
+            </div>
+            <div className="text-center">
+                 <motion.button whileHover={{scale: 1.05}} whileTap={{scale: 0.95}} onClick={() => setActiveScreen('Goals')} className="flex items-center justify-center space-x-2 w-full px-4 py-2 mt-4 rounded-lg bg-white/50 text-black font-semibold hover:bg-gray-200/50">
+                    <Target size={16} />
+                    <span>Set Financial Goals</span>
+                </motion.button>
+            </div>
+        </div>
+    );
+}
+
+const GoalsScreen = () => {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-4xl font-bold text-black tracking-wide">Goals</h1>
+        <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl text-center">
+          <p className="text-lg font-semibold text-black">Financial Goals are coming soon!</p>
+          <p className="text-sm text-gray-600 mt-2">Here you will be able to set, track, and manage your financial goals.</p>
+        </div>
+      </div>
+    )
+}
 
 const ProfileScreen = ({ user }) => {
     const handleLogout = () => {
@@ -686,25 +952,43 @@ const ProfileScreen = ({ user }) => {
 };
 
 const BottomNavBar = ({ activeScreen, setActiveScreen }) => {
-    const navItems = [ { name: 'Dashboard', icon: LineChart }, { name: 'Invoices', icon: FileText }, { name: 'Scan', icon: Plus }, { name: 'Chat', icon: MessageCircle }, { name: 'Profile', icon: Settings } ];
+    const navItems = [ 
+        { name: 'Dashboard', icon: LineChart }, 
+        { name: 'Invoices', icon: FileText }, 
+        { name: 'Chat', icon: MessageCircle }, 
+        { name: 'Budget', icon: DollarSign } 
+    ];
+
+    const leftItems = navItems.slice(0, 2);
+    const rightItems = navItems.slice(2, 4);
+
     return (
         <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30">
             <div className="flex justify-around items-center max-w-lg mx-auto h-20">
-                {navItems.map((item) => {
+                {leftItems.map((item) => {
                     const isActive = activeScreen === item.name;
-                    if (item.name === 'Scan') {
-                        return (
-                            <div key={item.name} className="w-20 flex justify-center">
-                                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className="-mt-12 bg-black text-white rounded-full w-20 h-20 flex items-center justify-center shadow-xl shadow-black/30 ring-4 ring-white/20">
-                                    <item.icon size={32} />
-                                </motion.button>
-                            </div>
-                        );
-                    }
                     return (
                         <div key={item.name} className="w-20 relative flex justify-center items-center h-full">
                              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className={`relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-black' : 'text-gray-500 hover:text-black'}`}>
-                                <item.icon size={24} className={`drop-shadow-sm ${item.name === 'Chat' && 'drop-shadow-[0_0_3px_rgba(0,0,0,0.5)]'}`}/>
+                                <item.icon size={24} className={`drop-shadow-sm`}/>
+                            </motion.button>
+                            {isActive && <motion.div layoutId="active-pill" className="absolute bottom-2 w-2 h-2 bg-black rounded-full z-0"/>}
+                        </div>
+                    );
+                })}
+
+                <div className="w-20 flex justify-center">
+                    <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen('Scan')} className="-mt-12 bg-black text-white rounded-full w-20 h-20 flex items-center justify-center shadow-xl shadow-black/30 ring-4 ring-white/20">
+                        <Plus size={32} />
+                    </motion.button>
+                </div>
+
+                {rightItems.map((item) => {
+                    const isActive = activeScreen === item.name;
+                    return (
+                        <div key={item.name} className="w-20 relative flex justify-center items-center h-full">
+                             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setActiveScreen(item.name)} className={`relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors duration-200 ${isActive ? 'text-black' : 'text-gray-500 hover:text-black'}`}>
+                                <item.icon size={24} className={`drop-shadow-sm`}/>
                             </motion.button>
                             {isActive && <motion.div layoutId="active-pill" className="absolute bottom-2 w-2 h-2 bg-black rounded-full z-0"/>}
                         </div>
