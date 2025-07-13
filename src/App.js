@@ -1251,7 +1251,7 @@ const BottomNavBar = ({ activeScreen, setActiveScreen }) => {
     const rightItems = navItems.slice(2, 4);
 
     return (
-        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30 pb-[env(safe-area-inset-bottom)]">
+        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} transition={{ type: "spring", stiffness: 500, damping: 50 }} className="fixed bottom-0 left-0 right-0 bg-white/30 backdrop-blur-lg border-t border-white/20 shadow-2xl shadow-black/30 pb-[env(safe-area-inset-bottom)] z-30">
             <div className="flex justify-around items-center max-w-lg mx-auto h-20">
                 {leftItems.map((item) => {
                     const isActive = activeScreen === item.name;

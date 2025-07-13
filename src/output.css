@@ -614,6 +614,10 @@ video {
   top: 1.25rem;
 }
 
+.bottom-0 {
+  bottom: 0px;
+}
+
 .-z-10 {
   z-index: -10;
 }
@@ -632,6 +636,10 @@ video {
 
 .z-20 {
   z-index: 20;
+}
+
+.z-30 {
+  z-index: 30;
 }
 
 .col-span-2 {
