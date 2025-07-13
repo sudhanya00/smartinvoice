@@ -368,7 +368,7 @@ const MainApp = ({ user }) => {
         <div className="bg-gray-100 text-gray-900 font-sans h-screen flex flex-col antialiased subpixel-antialiased" style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
             <AnimatedBackground />
             <Notification notification={notification} onDismiss={() => setNotification(null)} />
-            <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">{renderScreen()}</main>
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">{renderScreen()}</main>
             <BottomNavBar activeScreen={activeScreen} setActiveScreen={setActiveScreen} />
         </div>
     );
@@ -383,7 +383,7 @@ const DashboardScreen = ({ invoices, budgets, goals, alerts, insights, isInsight
     }, {});
     
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <div className="flex justify-between items-center">
                 <h1 className="text-4xl font-bold text-black tracking-wide">Dashboard</h1>
                 <div className="flex items-center space-x-4">
@@ -556,7 +556,7 @@ const InvoicesScreen = ({ invoices, db, userId, setNotification }) => {
 
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <ConfirmationModal 
                 isOpen={!!invoiceToDelete}
                 onClose={() => setInvoiceToDelete(null)}
@@ -694,7 +694,7 @@ const ScanScreen = ({ db, userId, setActiveScreen, setNotification }) => {
     const currencies = ['USD', 'EUR', 'GBP', 'INR', 'JPY', 'CAD', 'AUD'];
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Scan Invoice</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
                 <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImagePick} className="hidden" />
@@ -873,7 +873,7 @@ const ChatScreen = ({ invoices, budgets, goals, db, userId, setNotification }) =
     };
 
     return (
-        <div className="flex h-full space-x-0 md:space-x-4 relative">
+        <div className="flex h-full space-x-0 md:space-x-4 relative pb-24">
              <ConfirmationModal 
                 isOpen={!!chatToDelete}
                 onClose={() => setChatToDelete(null)}
@@ -947,7 +947,7 @@ const FinanceScreen = ({ db, userId, budgets, goals, setNotification }) => {
     const [activeTab, setActiveTab] = useState('Budgets');
     
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Finance</h1>
             <div className="flex space-x-1 bg-white/50 backdrop-blur-lg border border-white/20 p-1 rounded-xl">
                 <button onClick={() => setActiveTab('Budgets')} className={`w-full p-2 rounded-lg font-semibold ${activeTab === 'Budgets' ? 'bg-black text-white' : 'hover:bg-gray-200/50'}`}>Budgets</button>
@@ -1171,7 +1171,7 @@ const AlertsScreen = ({ db, userId, alerts, setNotification }) => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Alerts & Reminders</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-6 rounded-2xl shadow-xl">
                 <h2 className="text-lg font-semibold text-black mb-4">Add New Alert</h2>
@@ -1227,7 +1227,7 @@ const ProfileScreen = ({ user }) => {
         signOut(getAuth());
     };
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <h1 className="text-4xl font-bold text-black tracking-wide">Profile</h1>
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                  <h2 className="text-lg font-semibold text-black mb-4">Account</h2>
