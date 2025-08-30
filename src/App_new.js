@@ -26,10 +26,25 @@ import ProfileScreen from './screens/ProfileScreen';
  */
 const App = () => {
     const { user, loading } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="w-screen h-screen flex justify-center items-center bg-gray-100">
+                <Loader2 className="animate-spin text-black" size={48} />
+            </div>
+        );
+    }
+
+    return user ? <MainApp user={user} /> : <LoginScreen />;
+};
+
+/**
+ * Main Application after Login
+ */
+const MainApp = ({ user }) => {
     const [activeScreen, setActiveScreen] = useState('Dashboard');
     const [notification, setNotification] = useState(null);
     
-    // Always call hooks - get data for authenticated user or pass null
     const {
         invoices,
         budgets,
@@ -40,48 +55,68 @@ const App = () => {
         getDashboardInsights
     } = useAppData(user);
 
-    if (loading) {
-        return (
-            <div className="w-screen h-screen flex justify-center items-center bg-gray-100">
-                <Loader2 className="animate-spin text-black" size={48} />
-            </div>
-        );
-    }
-
-    if (!user) {
-        return <LoginScreen />;
-    }    const renderScreen = () => {
+    const renderScreen = () => {
         const screenProps = {
-            user,
             userId: user.uid,
             setActiveScreen,
-            setNotification,
-            invoices,
-            budgets,
-            goals,
-            alerts,
-            insights,
-            isInsightsLoading,
-            getDashboardInsights
+            setNotification
         };
 
         const screens = {
-            Dashboard: <DashboardScreen {...screenProps} />,
-            Scan: <ScanScreen {...screenProps} />,
-            Invoices: <InvoicesScreen {...screenProps} />,
-            Chat: <ChatScreen {...screenProps} />,
-            Finance: <FinanceScreen {...screenProps} />,
-            Alerts: <AlertsScreen {...screenProps} />,
-            Profile: <ProfileScreen {...screenProps} />
+            'Dashboard': (
+                <DashboardScreen
+                    invoices={invoices}
+                    budgets={budgets}
+                    goals={goals}
+                    alerts={alerts}
+                    insights={insights}
+                    isInsightsLoading={isInsightsLoading}
+                    getDashboardInsights={getDashboardInsights}
+                    {...screenProps}
+                />
+            ),
+            'Scan': (
+                <ScanScreen {...screenProps} />
+            ),
+            'Invoices': (
+                <InvoicesScreen
+                    invoices={invoices}
+                    {...screenProps}
+                />
+            ),
+            'Chat': (
+                <ChatScreen
+                    invoices={invoices}
+                    budgets={budgets}
+                    goals={goals}
+                    {...screenProps}
+                />
+            ),
+            'Finance': (
+                <FinanceScreen
+                    budgets={budgets}
+                    goals={goals}
+                    {...screenProps}
+                />
+            ),
+            'Alerts': (
+                <AlertsScreen
+                    alerts={alerts}
+                    {...screenProps}
+                />
+            ),
+            'Profile': (
+                <ProfileScreen user={user} />
+            )
         };
 
         return (
             <AnimatePresence mode="wait">
                 <motion.div
                     key={activeScreen}
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
+                    exit={{ opacity: 0, y: -15 }}
                     transition={{ duration: 0.3 }}
                     className="h-full"
                 >
