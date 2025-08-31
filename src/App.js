@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2 } from 'lucide-react';
+import { Loader2, WifiOff } from 'lucide-react';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
 import { useAppData } from './hooks/useAppData';
+import { useOfflineMode } from './contexts/OfflineContext';
 
 // Components
 import AnimatedBackground from './components/AnimatedBackground';
@@ -27,7 +28,46 @@ import ProfileScreen from './screens/ProfileScreen';
 const App = () => {
     const { user, loading } = useAuth();
     const [activeScreen, setActiveScreen] = useState('Dashboard');
-    const [notification, setNotification] = useState(null);
+    const [notification, setNotification] = useState(null);    // Get offline mode status with all the necessary properties
+    const { 
+        showOfflineIndicator, 
+        isOfflineMode, 
+        isModelReady,
+        isModelLoading,
+        setIsOfflineMode
+    } = useOfflineMode();
+      // Debug logging for offline mode state
+    useEffect(() => {
+        console.log('App component - Offline mode state:', { 
+            isOfflineMode, 
+            isModelReady,
+            isModelLoading,
+            showOfflineIndicator 
+        });
+    }, [isOfflineMode, isModelReady, isModelLoading, showOfflineIndicator]);
+    
+    // Listen for network status changes
+    useEffect(() => {
+        const handleOnline = () => {
+            console.log('Network is online');
+            if (isOfflineMode) {
+                setNotification({ text: 'You are online. Offline mode is still active.', type: 'info' });
+            }
+        };
+        
+        const handleOffline = () => {
+            console.log('Network is offline');
+            setNotification({ text: 'You are offline. Using local processing for AI tasks.', type: 'warning' });
+        };
+        
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [isOfflineMode]);
     
     // Always call hooks - get data for authenticated user or pass null
     const {
@@ -88,8 +128,7 @@ const App = () => {
                     {screens[activeScreen]}
                 </motion.div>
             </AnimatePresence>
-        );
-    };
+        );    };
 
     return (
         <div 
@@ -97,8 +136,14 @@ const App = () => {
             style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}
         >
             <AnimatedBackground />
+            {showOfflineIndicator && (
+                <div className="fixed top-4 right-4 z-50 flex items-center bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">
+                    <WifiOff size={12} className="mr-1" />
+                    Offline Mode
+                </div>
+            )}
             <Notification 
-                notification={notification} 
+                notification={notification}
                 onDismiss={() => setNotification(null)} 
             />
             <main className="flex-1 overflow-hidden">
