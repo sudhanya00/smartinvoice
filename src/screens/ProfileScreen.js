@@ -1,18 +1,34 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { signOut } from 'firebase/auth';
-import { LogOut, ArrowLeft } from 'lucide-react';
+import { LogOut, ArrowLeft, WifiOff } from 'lucide-react';
 import { auth } from '../services/firebase';
+import OfflineToggle from '../components/OfflineToggle';
+import { useOfflineMode } from '../contexts/OfflineContext';
 
 /**
  * Profile screen component
  * @param {Object} user - Current user object
  * @param {Function} setActiveScreen - Function to change active screen
+ * @param {Function} setNotification - Function to show notifications
  */
-const ProfileScreen = ({ user, setActiveScreen }) => {
+const ProfileScreen = ({ user, setActiveScreen, setNotification }) => {
+    const { showOfflineIndicator, isOfflineMode, isModelReady } = useOfflineMode();
+    
+    // Debug logging for offline mode in profile screen
+    useEffect(() => {
+        console.log('ProfileScreen - Offline mode state:', { 
+            isOfflineMode, 
+            isModelReady, 
+            showOfflineIndicator 
+        });
+    }, [isOfflineMode, isModelReady, showOfflineIndicator]);
+
     const handleLogout = () => {
         signOut(auth);
-    };    return (
+    };    
+    
+    return (
         <div className="flex flex-col h-full">
             <div className="flex-1 overflow-y-auto space-y-6 p-4 md:p-6 pb-32">
             {/* Header with back button */}
@@ -28,7 +44,17 @@ const ProfileScreen = ({ user, setActiveScreen }) => {
                     </motion.button>
                     <h1 className="text-4xl font-bold text-black tracking-wide">Profile</h1>
                 </div>
+                
+                {showOfflineIndicator && (
+                    <div className="flex items-center text-xs px-2 py-1 bg-green-100 text-green-700 rounded-md">
+                        <WifiOff size={12} className="mr-1" />
+                        Offline Mode
+                    </div>
+                )}
             </div>
+            
+            {/* Offline AI Processing Toggle */}
+            <OfflineToggle />
             
             <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
                 <h2 className="text-lg font-semibold text-black mb-4">Account</h2>
