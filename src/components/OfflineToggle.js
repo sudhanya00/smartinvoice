@@ -1,0 +1,128 @@
+import React from "react";
+import { motion } from "framer-motion";
+import { WifiOff, Download, Loader2 } from "lucide-react";
+import { useOfflineMode } from "../contexts/OfflineContext";
+
+/**
+ * Toggle component for enabling/disabling offline mode
+ */
+const OfflineToggle = () => {
+    const {
+        isOfflineMode,
+        setIsOfflineMode,
+        isModelReady,
+        isModelLoading,
+        modelProgress,
+        offlineStatusMessage
+    } = useOfflineMode();    
+    
+    const handleToggleChange = () => {
+        console.log("Toggle clicked. Current state:", { isOfflineMode, isModelReady, isModelLoading });
+        
+        // Log the setter function to ensure it is defined
+        console.log("setIsOfflineMode function exists:", !!setIsOfflineMode);
+        
+        // Add a try-catch to catch any potential errors
+        try {
+            const newValue = !isOfflineMode;
+            console.log("Setting offline mode to:", newValue);
+            setIsOfflineMode(newValue);
+            
+            // Explicitly log the value after setting
+            setTimeout(() => {
+                console.log("Value after toggle attempt in component state:", {
+                    isOfflineMode,
+                    isModelReady,
+                    isModelLoading
+                });
+                console.log("localStorage value:", localStorage.getItem("isOfflineMode"));
+            }, 100);
+        } catch (error) {
+            console.error("Error toggling offline mode:", error);
+        }
+    };
+
+    // Debug render to check values
+    console.log("OfflineToggle rendering with values:", {
+        isOfflineMode,
+        isModelReady,
+        isModelLoading,
+        modelProgress
+    });
+
+    return (
+        <div className="bg-white/50 backdrop-blur-lg border border-white/20 p-5 rounded-2xl shadow-xl">
+            <h2 className="text-lg font-semibold text-black mb-4">AI Processing Mode</h2>
+            
+            <div className="flex items-center justify-between">
+                <span className="text-gray-700">Offline AI Processing</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={isOfflineMode}
+                        onChange={handleToggleChange}
+                        disabled={isModelLoading}
+                    />
+                    <motion.div
+                        className={`w-11 h-6 rounded-full transition-colors ${
+                            isOfflineMode ? "bg-green-500" : "bg-gray-300"
+                        } flex items-center p-1`}
+                        animate={{ backgroundColor: isOfflineMode ? "rgb(34 197 94)" : "rgb(209 213 219)" }}
+                    >
+                        <motion.div
+                            className="w-4 h-4 bg-white rounded-full shadow-md"
+                            animate={{ x: isOfflineMode ? 20 : 0 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                    </motion.div>
+                </label>
+            </div>
+            
+            {isModelLoading && (
+                <div className="mt-4">
+                    <div className="flex items-center text-sm text-gray-600 mb-2">
+                        <Download size={16} className="mr-2" />
+                        {offlineStatusMessage || "Preparing offline mode..."}
+                    </div>
+                    
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                        <div
+                            className="bg-green-500 h-2.5 rounded-full"
+                            style={{ width: `${modelProgress}%` }}
+                        />
+                    </div>
+                    
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>{modelProgress}% complete</span>
+                        <span>~10-15MB</span>
+                    </div>
+                </div>
+            )}
+            
+            {isOfflineMode && isModelReady && (
+                <div className="mt-4 text-sm flex items-start">
+                    <WifiOff size={16} className="text-green-600 mr-2 mt-0.5" />
+                    <div>
+                        <p className="text-green-600 font-medium">Offline mode active</p>
+                        <p className="text-gray-600 mt-1">
+                            Text-based AI tasks are processed on your device. 
+                            Image tasks remain online.
+                        </p>
+                    </div>
+                </div>
+            )}
+            
+            {!isOfflineMode && !isModelLoading && (
+                <div className="mt-4 text-sm text-gray-600">
+                    <p>
+                        Enable to process text AI tasks on your device and reduce API calls. 
+                        Requires a one-time model download (~10-15MB).
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default OfflineToggle;

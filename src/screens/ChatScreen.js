@@ -127,13 +127,14 @@ const ChatScreen = ({ invoices, budgets, goals, userId, setNotification }) => {
 
         setIsLoading(true);
 
-        const currentMessages = [...messages, userMessage];
-        const aiResponse = await GeminiService.generateChatResponse(
+        const currentMessages = [...messages, userMessage];        const aiResponse = await GeminiService.generateChatResponse(
             currentMessages, 
             invoices, 
             budgets, 
             userMessage.text, 
-            setNotification
+            setNotification,
+            userId,
+            activeChatSessionId
         );
         
         const aiMessage = { text: aiResponse, role: 'ai' };

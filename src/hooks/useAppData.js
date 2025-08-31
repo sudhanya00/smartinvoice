@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import DatabaseService from '../services/database';
 import GeminiService from '../services/gemini';
+import { useOfflineMode } from '../contexts/OfflineContext';
 
 /**
  * Custom hook for managing application state and data
@@ -15,6 +16,22 @@ export const useAppData = (user) => {
     const [insights, setInsights] = useState([]);
     const [isInsightsLoading, setIsInsightsLoading] = useState(false);
     const prevInvoiceCount = useRef(0);
+    
+    // Get the offline mode status
+    const { isOfflineMode } = useOfflineMode();
+      // Update Gemini service with offline mode status
+    useEffect(() => {
+        console.log('useAppData hook: Updating GeminiService offline mode to:', isOfflineMode);
+        GeminiService.setOfflineMode(isOfflineMode);
+        
+        // Enforce immediate synchronization with direct state check
+        setTimeout(() => {
+            if (GeminiService.isOfflineMode !== isOfflineMode) {
+                console.warn('Offline mode sync mismatch detected, forcing sync');
+                GeminiService.setOfflineMode(isOfflineMode);
+            }
+        }, 100);
+    }, [isOfflineMode]);
 
     // Generate dashboard insights
     const getDashboardInsights = useCallback(async (currentInvoices = invoices) => {
