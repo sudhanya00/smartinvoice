@@ -51,14 +51,46 @@ const App = () => {
         const handleOnline = () => {
             console.log('Network is online');
             if (isOfflineMode) {
-                setNotification({ text: 'You are online. Offline mode is still active.', type: 'info' });
+                setNotification({ 
+                    text: 'You are online. Offline mode is still active.', 
+                    type: 'info',
+                    duration: 3000 
+                });
             }
         };
         
         const handleOffline = () => {
             console.log('Network is offline');
-            setNotification({ text: 'You are offline. Using local processing for AI tasks.', type: 'warning' });
+            
+            // Auto-enable offline mode if model is ready
+            if (!isOfflineMode && isModelReady) {
+                console.log('Auto-enabling offline mode due to network disconnection');
+                setIsOfflineMode(true);
+                setNotification({ 
+                    text: 'Network disconnected. Switched to offline processing automatically.', 
+                    type: 'warning',
+                    duration: 5000
+                });
+            } else if (!isModelReady) {
+                setNotification({ 
+                    text: 'You are offline. Some features may be unavailable until connection is restored.', 
+                    type: 'warning',
+                    duration: 5000
+                });
+            } else {
+                setNotification({ 
+                    text: 'Network disconnected. Using local processing for AI tasks.', 
+                    type: 'warning',
+                    duration: 3000
+                });
+            }
         };
+        
+        // Check initial network status
+        if (!navigator.onLine && !isOfflineMode && isModelReady) {
+            console.log('Initial state: offline - activating offline mode');
+            setIsOfflineMode(true);
+        }
         
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
@@ -67,7 +99,7 @@ const App = () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
-    }, [isOfflineMode]);
+    }, [isOfflineMode, isModelReady, setIsOfflineMode]);
     
     // Always call hooks - get data for authenticated user or pass null
     const {

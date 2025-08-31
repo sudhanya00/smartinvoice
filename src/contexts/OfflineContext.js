@@ -139,24 +139,116 @@ export const OfflineModeProvider = ({ children }) => {
                     import('../services/localModel').then(async (LocalModelService) => {
                         try {
                             // Start the model download with progress callback
-                            const success = await LocalModelService.default.downloadModel((progress) => {
-                                setModelProgress(progress);
+                            setOfflineStatusMessage('Downloading AI model (approx. 15MB)...');
+                            const result = await LocalModelService.default.downloadModel((progress) => {
+                                if (progress === -1) {
+                                    setOfflineStatusMessage('Downloading model... Please wait.');
+                                } else if (progress === 0) {
+                                    setOfflineStatusMessage('Starting download...');
+                                    setModelProgress(0);
+                                } else {
+                                    setOfflineStatusMessage(`Downloading AI model: ${progress}% complete`);
+                                    setModelProgress(progress);
+                                }
                             });
                             
-                            if (success) {
+                            if (result && result.success) {
                                 console.log('Model download successful, setting model ready state');
                                 setIsModelReady(true);
                                 setIsModelLoading(false);
                                 setOfflineStatusMessage('');
                                 // Indicator will be set by the UI effect
                             } else {
-                                throw new Error('Failed to download model');
+                                // Handle specific error types
+                                if (!result || !result.error) {
+                                    // Unexpected response format
+                                    console.error('Model download failed with unexpected response:', result);
+                                    setOfflineStatusMessage('Download failed. Please check your connection and try again.');
+                                    setTimeout(() => {
+                                        setIsModelLoading(false);
+                                        setIsOfflineMode(false);
+                                        setOfflineStatusMessage('');
+                                    }, 5000);
+                                } else if (result.error === 'network-offline') {
+                                    console.error('Device is offline, cannot download model');
+                                    setOfflineStatusMessage('Network is offline. Cannot download model. Please try again when connected.');
+                                    setTimeout(() => {
+                                        setIsModelLoading(false);
+                                        setIsOfflineMode(false);
+                                        setOfflineStatusMessage('');
+                                    }, 5000);
+                                } else if (result.error === 'network') {
+                                    console.error('Network issues during model download:', result.details);
+                                    setOfflineStatusMessage('Network issues detected. Model download failed. Please check your connection and try again.');
+                                    setTimeout(() => {
+                                        setIsModelLoading(false);
+                                        setIsOfflineMode(false);
+                                        setOfflineStatusMessage('');
+                                    }, 5000);
+                                } else if (result.error === 'timeout') {
+                                    console.error('Model download timed out');
+                                    setOfflineStatusMessage('Download timed out. Please try again on a faster connection.');
+                                    setTimeout(() => {
+                                        setIsModelLoading(false);
+                                        setIsOfflineMode(false);
+                                        setOfflineStatusMessage('');
+                                    }, 5000);
+                                } else {
+                                    console.error('Model download failed:', result.details);
+                                    setOfflineStatusMessage(`Download failed: ${result.details || 'Unknown error'}. Please try again.`);
+                                    setTimeout(() => {
+                                        setIsModelLoading(false);
+                                        setIsOfflineMode(false);
+                                        setOfflineStatusMessage('');
+                                    }, 5000);
+                                }
                             }
                         } catch (error) {
-                            console.error('Model download failed:', error);
-                            setIsModelLoading(false);
-                            setIsOfflineMode(false);
-                            setOfflineStatusMessage('');
+                            console.error('Model download failed with exception:', error);
+                            
+                            // Determine the type of error for better user feedback
+                            let errorMessage = 'Error during model download. Please try again later.';
+                            
+                            if (error.name === 'AbortError' || error.message.includes('abort')) {
+                                errorMessage = 'Download was interrupted. Please try again.';
+                            } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                                errorMessage = 'Network error during download. Please check your connection and try again.';
+                            } else if (error.name === 'QuotaExceededError') {
+                                errorMessage = 'Storage quota exceeded. Please free up space on your device and try again.';
+                            } else if (error.message.includes('cors') || error.message.includes('CORS')) {
+                                errorMessage = 'Cross-origin request failed. Trying alternative source...';
+                                
+                                // Try the fallback URL one more time
+                                try {
+                                    setOfflineStatusMessage('Using alternative download source...');
+                                    const fallbackResult = await LocalModelService.default.downloadModel((progress) => {
+                                        if (progress > 0) {
+                                            setModelProgress(progress);
+                                            setOfflineStatusMessage(`Downloading from alternative source: ${progress}% complete`);
+                                        }
+                                    });
+                                    
+                                    if (fallbackResult && fallbackResult.success) {
+                                        console.log('Fallback download successful');
+                                        setIsModelReady(true);
+                                        setIsModelLoading(false);
+                                        setOfflineStatusMessage('');
+                                        return; // Exit early as we succeeded with the fallback
+                                    } else {
+                                        errorMessage = 'Download failed from all sources. Please try again later.';
+                                    }
+                                } catch (fallbackError) {
+                                    console.error('Fallback download also failed:', fallbackError);
+                                    errorMessage = 'Download failed from all sources. Please try again later.';
+                                }
+                            }
+                            
+                            setOfflineStatusMessage(errorMessage);
+                            setTimeout(() => {
+                                setIsModelLoading(false);
+                                setIsOfflineMode(false);
+                                setOfflineStatusMessage('');
+                            }, 5000);
                         }
                     });
                 } else {                    
@@ -171,11 +263,19 @@ export const OfflineModeProvider = ({ children }) => {
                                 // Indicator will be set by the UI effect
                             } else {
                                 console.log('Model initialization failed, disabling offline mode');
-                                setIsOfflineMode(false);
+                                setOfflineStatusMessage('Failed to initialize model. Please try again.');
+                                setTimeout(() => {
+                                    setIsOfflineMode(false);
+                                    setOfflineStatusMessage('');
+                                }, 3000);
                             }
                         } catch (error) {
                             console.error('Model initialization failed:', error);
-                            setIsOfflineMode(false);
+                            setOfflineStatusMessage('Error during model initialization. Please try again.');
+                            setTimeout(() => {
+                                setIsOfflineMode(false);
+                                setOfflineStatusMessage('');
+                            }, 3000);
                         }
                     });
                 }
@@ -184,6 +284,87 @@ export const OfflineModeProvider = ({ children }) => {
             initializeModel();
         }
     }, [isOfflineMode, isModelReady, isModelLoading]);
+
+    // Effect to handle service worker events
+    useEffect(() => {
+        // Only set up listeners if offline mode is enabled
+        if (!isOfflineMode) return;
+        
+        const handleModelDownloadStatus = (event) => {
+            console.log('Received model download status event:', event.detail);
+            
+            const { status, message } = event.detail;
+            
+            switch (status) {
+                case 'started':
+                    setIsModelLoading(true);
+                    setModelProgress(0);
+                    setOfflineStatusMessage('Preparing to download model...');
+                    break;
+                
+                case 'downloading':
+                    setIsModelLoading(true);
+                    setOfflineStatusMessage('Downloading model via Service Worker...');
+                    break;
+                
+                case 'retrying':
+                    setOfflineStatusMessage('Trying alternative download source...');
+                    break;
+                
+                case 'cached':
+                    setIsModelReady(true);
+                    setIsModelLoading(false);
+                    setOfflineStatusMessage('');
+                    break;
+                
+                case 'success':
+                    setIsModelReady(true);
+                    setIsModelLoading(false);
+                    setModelProgress(100);
+                    setOfflineStatusMessage('');
+                    
+                    // Give the user visual feedback that it completed
+                    setTimeout(() => {
+                        setModelProgress(0);
+                    }, 1500);
+                    break;
+                
+                case 'error':
+                    setOfflineStatusMessage(`Download error: ${message}`);
+                    setTimeout(() => {
+                        setIsModelLoading(false);
+                        setIsOfflineMode(false);
+                        setOfflineStatusMessage('');
+                    }, 5000);
+                    break;
+                
+                default:
+                    console.warn('Unknown model download status:', status);
+            }
+        };
+        
+        const handleServiceWorkerRegistrationFailed = (event) => {
+            console.error('Service worker registration failed:', event.detail);
+            
+            if (isOfflineMode) {
+                setOfflineStatusMessage('Offline mode requires service worker support, which failed to initialize.');
+                setTimeout(() => {
+                    setIsOfflineMode(false);
+                    setOfflineStatusMessage('');
+                }, 5000);
+            }
+        };
+        
+        // Add event listeners
+        window.addEventListener('modelDownloadStatus', handleModelDownloadStatus);
+        window.addEventListener('serviceWorkerRegistrationFailed', handleServiceWorkerRegistrationFailed);
+        
+        // Clean up event listeners on unmount
+        return () => {
+            window.removeEventListener('modelDownloadStatus', handleModelDownloadStatus);
+            window.removeEventListener('serviceWorkerRegistrationFailed', handleServiceWorkerRegistrationFailed);
+        };
+    }, [isOfflineMode]);
 
     
     // Provide the context values to consumers

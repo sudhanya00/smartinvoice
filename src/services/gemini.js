@@ -11,7 +11,8 @@ class GeminiService {
         this.apiKey = GEMINI_API_KEY;
         this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
         this.isOfflineMode = false;
-    }    /**
+    }    
+    /**
      * Set the offline mode state
      * @param {boolean} isOffline - Whether offline mode is enabled
      */
@@ -19,10 +20,20 @@ class GeminiService {
         console.log('GeminiService: Setting offline mode to:', isOffline);
         if (this.isOfflineMode !== isOffline) {
             this.isOfflineMode = isOffline;
+            
+            // Store the preference
+            localStorage.setItem('geminiServiceOfflineMode', isOffline.toString());
+            
             // Broadcast an event that offline mode has changed
             window.dispatchEvent(new CustomEvent('offlineModeChanged', { 
-                detail: { isOfflineMode: isOffline } 
+                detail: { 
+                    isOfflineMode: isOffline,
+                    timestamp: Date.now()
+                } 
             }));
+            
+            // Log mode change for analytics/debugging
+            console.log(`AI Processing mode switched to: ${isOffline ? 'Offline (Local)' : 'Online (Cloud)'}`);
         }
     }
 
@@ -31,18 +42,50 @@ class GeminiService {
      * @param {Object} payload - The request payload
      * @param {Function} setNotification - Notification callback function
      * @returns {string|null} The AI response text or null if failed
-     */
-    async callAPI(payload, setNotification) {
+     */    async callAPI(payload, setNotification) {
+        const startTime = performance.now();
+        let usedLocalModel = false;
+        
         try {
-            // Check if we should use local model
+            // First check if we're offline at the network level
+            if (!navigator.onLine) {
+                if (LocalModelService.isModelReady) {
+                    console.log('Network offline, using local model');
+                    usedLocalModel = true;
+                    const response = await this.generateWithLocalModel(payload);
+                    
+                    const endTime = performance.now();
+                    console.log(`AI response generated using local model in ${Math.round(endTime - startTime)}ms`);
+                    
+                    // Record offline usage
+                    OfflineStoreService.recordFallbackUse('offline');
+                    
+                    return response;
+                } else {
+                    throw new Error("You are offline and local model is not available");
+                }
+            }
+            
+            // Check if we should use local model based on settings
             if (this.isOfflineMode && LocalModelService.isModelReady) {
-                return await this.generateWithLocalModel(payload);
+                console.log('Offline mode enabled, using local model');
+                usedLocalModel = true;
+                const response = await this.generateWithLocalModel(payload);
+                
+                const endTime = performance.now();
+                console.log(`AI response generated using local model in ${Math.round(endTime - startTime)}ms`);
+                
+                // Record intentional local model usage
+                OfflineStoreService.recordLocalModelUse(payload.task || 'intentional_offline');
+                
+                return response;
             }
             
             if (!this.apiKey) {
                 throw new Error("Gemini API Key not found.");
             }
 
+            console.log('Using Gemini cloud API');
             const apiUrl = `${this.baseUrl}?key=${this.apiKey}`;
             
             const response = await fetch(apiUrl, {
@@ -57,8 +100,13 @@ class GeminiService {
             }
 
             const result = await response.json();
-            
-            if (result.candidates && result.candidates.length > 0 && result.candidates[0].content.parts[0].text) {
+              if (result.candidates && result.candidates.length > 0 && result.candidates[0].content.parts[0].text) {
+                const endTime = performance.now();
+                console.log(`AI response generated using Gemini cloud in ${Math.round(endTime - startTime)}ms`);
+                
+                // Record API usage for analytics
+                OfflineStoreService.recordApiCall(payload.task || 'text_generation');
+                
                 return result.candidates[0].content.parts[0].text;
             } else {
                 const finishReason = result.candidates?.[0]?.finishReason;
@@ -69,21 +117,42 @@ class GeminiService {
             }
         } catch (error) {
             // If online API fails and we have the local model ready, fall back to it
-            if (!this.isOfflineMode && LocalModelService.isModelReady) {
+            if (!usedLocalModel && LocalModelService.isModelReady) {
                 setNotification?.({ 
                     text: `Online API unavailable. Falling back to local model.`, 
-                    type: 'warning' 
+                    type: 'warning',
+                    duration: 3000
                 });
-                return await this.generateWithLocalModel(payload);
+                
+                try {
+                    console.log('Falling back to local model after cloud API failure');
+                    const response = await this.generateWithLocalModel(payload);
+                    
+                    const endTime = performance.now();
+                    console.log(`AI response generated using local model fallback in ${Math.round(endTime - startTime)}ms`);
+                    
+                    // Save this interaction to the offline store to track API cost savings
+                    OfflineStoreService.recordFallbackUse('api_failure');
+                    
+                    return response;
+                } catch (localError) {
+                    console.error('Local model fallback also failed:', localError);
+                    throw new Error(`Cloud API error: ${error.message}. Local fallback also failed.`);
+                }
             }
             
             if (setNotification) {
-                setNotification({ text: `AI Error: ${error.message}`, type: 'error' });
+                setNotification({ 
+                    text: `AI Error: ${error.message}`, 
+                    type: 'error',
+                    duration: 5000
+                });
             }
             console.error('Gemini API Error:', error);
             return null;
         }
-    }    /**
+    }    
+    /**
      * Generate text using the local model
      * @param {Object} payload - The request payload
      * @returns {Promise<string>} - Generated text
@@ -110,12 +179,33 @@ class GeminiService {
                 throw new Error("Could not extract prompt from payload");
             }
             
-            // Use the local model to generate a response
-            const response = await LocalModelService.generate(prompt.trim());
+            // Check if model is ready
+            if (!LocalModelService.isModelReady) {
+                console.warn('Local model is not ready, attempting initialization');
+                const initialized = await LocalModelService.init();
+                if (!initialized) {
+                    throw new Error("Local model is not initialized and could not be loaded");
+                }
+            }
+            
+            // Record the request for offline analytics
+            OfflineStoreService.recordLocalModelUse(payload.task || 'text_generation');
+            
+            // Use the local model to generate a response with timeout protection
+            const timeout = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Local model generation timed out after 30 seconds')), 30000);
+            });
+            
+            const generationPromise = LocalModelService.generate(prompt.trim());
+            const response = await Promise.race([generationPromise, timeout]);
             
             return response;
         } catch (error) {
             console.error('Local model generation failed:', error);
+            
+            // Record the failure for analytics
+            OfflineStoreService.recordError('local_model_generation', error.message);
+            
             throw error;
         }
     }
@@ -233,7 +323,8 @@ class GeminiService {
             console.error("Failed to parse insights JSON", e, result);
             return ["Could not generate new insights at this time."];
         }
-    }    /**
+    }    
+    /**
      * Generate chat response for financial queries
      * @param {Array} messages - Chat message history
      * @param {Array} invoices - User's invoices
@@ -268,7 +359,8 @@ class GeminiService {
             console.error('Chat response generation failed:', error);
             return "Sorry, I couldn't process that.";
         }
-    }    /**
+    }    
+    /**
      * Generate a short chat title from the first message
      * @param {string} firstMessage - The first message in the chat
      * @param {Function} setNotification - Notification callback function

@@ -20,8 +20,39 @@ class OfflineStoreService {
       name: 'offlineData',
       storeName: 'pendingSync'
     });
+    
+    this.analyticsStore = localforage.createInstance({
+      name: 'offlineData',
+      storeName: 'analytics'
+    });
+    
+    // Initialize analytics if not exists
+    this._initAnalytics();
   }
 
+  /**
+   * Initialize analytics data
+   * @private
+   */
+  async _initAnalytics() {
+    try {
+      const analytics = await this.analyticsStore.getItem('usage');
+      if (!analytics) {
+        await this.analyticsStore.setItem('usage', {
+          localModelUses: 0,
+          apiCalls: 0,
+          fallbackUses: 0,
+          estimatedSavings: 0,
+          errors: [],
+          usageByType: {},
+          lastReset: new Date().toISOString()
+        });
+      }
+    } catch (error) {
+      console.error('Failed to initialize analytics:', error);
+    }
+  }
+  
   /**
    * Store chat message that was processed offline
    * @param {string} userId - User ID
@@ -210,7 +241,209 @@ class OfflineStoreService {
   }
 
   /**
-   * Clear all offline data
+   * Record local model usage for analytics
+   * @param {string} taskType - Type of task performed
+   * @returns {Promise<void>}
+   */
+  async recordLocalModelUse(taskType = 'default') {
+    try {
+      const analytics = await this.analyticsStore.getItem('usage') || {
+        localModelUses: 0,
+        apiCalls: 0,
+        fallbackUses: 0,
+        estimatedSavings: 0,
+        errors: [],
+        usageByType: {},
+        lastReset: new Date().toISOString()
+      };
+      
+      // Increment counters
+      analytics.localModelUses++;
+      
+      // Track by task type
+      if (!analytics.usageByType[taskType]) {
+        analytics.usageByType[taskType] = 0;
+      }
+      analytics.usageByType[taskType]++;
+      
+      // Calculate estimated cost savings (approx $0.0005 per API call)
+      analytics.estimatedSavings += 0.0005;
+      
+      await this.analyticsStore.setItem('usage', analytics);
+    } catch (error) {
+      console.error('Failed to record local model use:', error);
+    }
+  }
+  
+  /**
+   * Record API fallback usage
+   * @param {string} reason - Reason for fallback
+   * @returns {Promise<void>}
+   */
+  async recordFallbackUse(reason = 'unknown') {
+    try {
+      const analytics = await this.analyticsStore.getItem('usage') || {
+        localModelUses: 0,
+        apiCalls: 0,
+        fallbackUses: 0,
+        estimatedSavings: 0,
+        errors: [],
+        usageByType: {},
+        lastReset: new Date().toISOString()
+      };
+      
+      analytics.fallbackUses++;
+      
+      // Track fallback reasons
+      if (!analytics.fallbackReasons) {
+        analytics.fallbackReasons = {};
+      }
+      
+      if (!analytics.fallbackReasons[reason]) {
+        analytics.fallbackReasons[reason] = 0;
+      }
+      analytics.fallbackReasons[reason]++;
+      
+      await this.analyticsStore.setItem('usage', analytics);
+    } catch (error) {
+      console.error('Failed to record fallback use:', error);
+    }
+  }
+  
+  /**
+   * Record error for analytics
+   * @param {string} type - Error type
+   * @param {string} message - Error message
+   * @returns {Promise<void>}
+   */
+  async recordError(type, message) {
+    try {
+      const analytics = await this.analyticsStore.getItem('usage') || {
+        localModelUses: 0,
+        apiCalls: 0,
+        fallbackUses: 0,
+        estimatedSavings: 0,
+        errors: [],
+        usageByType: {},
+        lastReset: new Date().toISOString()
+      };
+      
+      // Store the error with timestamp
+      analytics.errors.push({
+        type,
+        message,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Keep only last 50 errors
+      if (analytics.errors.length > 50) {
+        analytics.errors = analytics.errors.slice(-50);
+      }
+      
+      await this.analyticsStore.setItem('usage', analytics);
+    } catch (error) {
+      console.error('Failed to record error:', error);
+    }
+  }
+  
+  /**
+   * Record API call (when using cloud API)
+   * @param {string} endpoint - API endpoint used
+   * @returns {Promise<void>}
+   */
+  async recordApiCall(endpoint = 'default') {
+    try {
+      const analytics = await this.analyticsStore.getItem('usage') || {
+        localModelUses: 0,
+        apiCalls: 0,
+        fallbackUses: 0,
+        estimatedSavings: 0,
+        errors: [],
+        usageByType: {},
+        lastReset: new Date().toISOString()
+      };
+      
+      analytics.apiCalls++;
+      
+      // Track by endpoint
+      if (!analytics.apiCallsByEndpoint) {
+        analytics.apiCallsByEndpoint = {};
+      }
+      
+      if (!analytics.apiCallsByEndpoint[endpoint]) {
+        analytics.apiCallsByEndpoint[endpoint] = 0;
+      }
+      analytics.apiCallsByEndpoint[endpoint]++;
+      
+      await this.analyticsStore.setItem('usage', analytics);
+    } catch (error) {
+      console.error('Failed to record API call:', error);
+    }
+  }
+  
+  /**
+   * Get usage statistics
+   * @returns {Promise<Object>} Usage statistics
+   */
+  async getStats() {
+    try {
+      const analytics = await this.analyticsStore.getItem('usage') || {
+        localModelUses: 0,
+        apiCalls: 0,
+        fallbackUses: 0,
+        estimatedSavings: 0,
+        errors: [],
+        usageByType: {},
+        lastReset: new Date().toISOString()
+      };
+      
+      // Calculate additional metrics
+      const totalRequests = analytics.localModelUses + analytics.apiCalls;
+      const offlinePercentage = totalRequests === 0 ? 0 : 
+          (analytics.localModelUses / totalRequests) * 100;
+      
+      return {
+        ...analytics,
+        totalRequests,
+        offlinePercentage: Math.round(offlinePercentage * 10) / 10,
+        formattedSavings: `$${analytics.estimatedSavings.toFixed(2)}`
+      };
+    } catch (error) {
+      console.error('Failed to get stats:', error);
+      return {
+        localModelUses: 0,
+        apiCalls: 0,
+        fallbackUses: 0,
+        estimatedSavings: 0,
+        totalRequests: 0,
+        offlinePercentage: 0,
+        formattedSavings: '$0.00'
+      };
+    }
+  }
+  
+  /**
+   * Reset analytics data
+   * @returns {Promise<void>}
+   */
+  async resetAnalytics() {
+    try {
+      await this.analyticsStore.setItem('usage', {
+        localModelUses: 0,
+        apiCalls: 0,
+        fallbackUses: 0,
+        estimatedSavings: 0,
+        errors: [],
+        usageByType: {},
+        lastReset: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Failed to reset analytics:', error);
+    }
+  }
+  
+  /**
+   * Clear all offline data including analytics
    * @returns {Promise<void>}
    */
   async clearAllData() {
@@ -218,8 +451,12 @@ class OfflineStoreService {
       await Promise.all([
         this.chatStore.clear(),
         this.summarizationStore.clear(),
-        this.pendingSyncStore.clear()
+        this.pendingSyncStore.clear(),
+        this.analyticsStore.clear()
       ]);
+      
+      // Reinitialize analytics
+      await this._initAnalytics();
     } catch (error) {
       console.error('Failed to clear offline data:', error);
     }
