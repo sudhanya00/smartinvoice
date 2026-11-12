@@ -76,3 +76,45 @@ export const debounce = (func, delay) => {
         timeoutId = setTimeout(() => func.apply(null, args), delay);
     };
 };
+
+/**
+ * Convert an image file to base64 JPEG, scaled down so its longest side is
+ * at most maxDimension. Phone photos are several megabytes; a receipt stays
+ * readable at this size and the request stays small enough for the server
+ * function. Falls back to the original bytes if the image can't be decoded.
+ * @param {File} file - Image file from an input or the camera
+ * @param {number} maxDimension - Longest side in pixels
+ * @param {number} quality - JPEG quality from 0 to 1
+ * @returns {Promise<string>} Base64 data without the data-URL prefix
+ */
+export const fileToJpegBase64 = (file, maxDimension = 1600, quality = 0.85) => {
+    const readOriginal = () => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+        reader.onerror = () => reject(new Error('Could not read image.'));
+        reader.readAsDataURL(file);
+    });
+
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+            URL.revokeObjectURL(url);
+            try {
+                const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(image.width * scale));
+                canvas.height = Math.max(1, Math.round(image.height * scale));
+                canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]);
+            } catch (e) {
+                readOriginal().then(resolve, reject);
+            }
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(url);
+            readOriginal().then(resolve, reject);
+        };
+        image.src = url;
+    });
+};

@@ -4,6 +4,7 @@ import { Upload, Loader2 } from 'lucide-react';
 import { DEFAULT_CATEGORIES, SUPPORTED_CURRENCIES } from '../constants';
 import GeminiService from '../services/gemini';
 import DatabaseService from '../services/database';
+import { fileToJpegBase64 } from '../utils';
 
 /**
  * Scan screen component for uploading and processing invoices
@@ -31,37 +32,33 @@ const ScanScreen = ({ userId, setActiveScreen, setNotification }) => {
         
         setIsProcessing(true);
         try {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = async (e) => {
-                const base64ImageData = e.target.result.split(',')[1];
-                const structuredData = await GeminiService.parseInvoice(base64ImageData, setNotification);
-                
-                if (structuredData) {
-                    setInvoiceData({
-                        vendorName: structuredData.vendorName || '',
-                        totalAmount: structuredData.totalAmount || '',
-                        invoiceDate: structuredData.invoiceDate || new Date().toISOString().split('T')[0],
-                        category: structuredData.category || 'Other',
-                        lineItems: structuredData.lineItems || [],
-                        currency: structuredData.currency || 'USD',
-                        shortDescription: structuredData.shortDescription || ''
-                    });
-                    setNotification({ text: "Invoice details extracted!", type: "success" });
-                } else {
-                    setNotification({ text: "AI couldn't extract details. Please enter manually.", type: 'error' });
-                    setInvoiceData({
-                        vendorName: '',
-                        totalAmount: '',
-                        invoiceDate: new Date().toISOString().split('T')[0],
-                        category: 'Other',
-                        lineItems: [],
-                        currency: 'USD',
-                        shortDescription: ''
-                    });
-                }
-                setIsProcessing(false);
-            };
+            const base64ImageData = await fileToJpegBase64(file);
+            const structuredData = await GeminiService.parseInvoice(base64ImageData, setNotification);
+            
+            if (structuredData) {
+                setInvoiceData({
+                    vendorName: structuredData.vendorName || '',
+                    totalAmount: structuredData.totalAmount || '',
+                    invoiceDate: structuredData.invoiceDate || new Date().toISOString().split('T')[0],
+                    category: structuredData.category || 'Other',
+                    lineItems: structuredData.lineItems || [],
+                    currency: structuredData.currency || 'USD',
+                    shortDescription: structuredData.shortDescription || ''
+                });
+                setNotification({ text: "Invoice details extracted!", type: "success" });
+            } else {
+                setNotification({ text: "AI couldn't extract details. Please enter manually.", type: 'error' });
+                setInvoiceData({
+                    vendorName: '',
+                    totalAmount: '',
+                    invoiceDate: new Date().toISOString().split('T')[0],
+                    category: 'Other',
+                    lineItems: [],
+                    currency: 'USD',
+                    shortDescription: ''
+                });
+            }
+            setIsProcessing(false);
         } catch (error) {
             setNotification({ text: 'Could not process image.', type: 'error' });
             setIsProcessing(false);

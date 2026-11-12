@@ -1,12 +1,14 @@
-import { GEMINI_API_KEY } from '../constants';
+import { auth } from './firebase';
 
 /**
- * Service for interacting with Google's Gemini AI API
+ * Service for interacting with Google's Gemini AI API.
+ *
+ * Requests go to this app's own server function (api/gemini.js), which holds
+ * the Gemini key. The key is never part of the browser bundle.
  */
 class GeminiService {
     constructor() {
-        this.apiKey = GEMINI_API_KEY;
-        this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+        this.endpoint = '/api/gemini';
     }
 
     /**
@@ -17,20 +19,23 @@ class GeminiService {
      */
     async callAPI(payload, setNotification) {
         try {
-            if (!this.apiKey) {
-                throw new Error("Gemini API Key not found.");
+            const user = auth.currentUser;
+            if (!user || typeof user.getIdToken !== 'function') {
+                throw new Error("Please sign in to use AI features.");
             }
+            const idToken = await user.getIdToken();
 
-            const apiUrl = `${this.baseUrl}?key=${this.apiKey}`;
-            
-            const response = await fetch(apiUrl, {
+            const response = await fetch(this.endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
                 body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
-                const errorBody = await response.json();
+                const errorBody = await response.json().catch(() => null);
                 throw new Error(errorBody?.error?.message || `API call failed with status: ${response.status}`);
             }
 
