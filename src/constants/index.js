@@ -37,4 +37,5 @@ export const CURRENCY_SYMBOLS = {
 };
 
 export const FIREBASE_CONFIG_STRING = process.env.REACT_APP_FIREBASE_CONFIG;
-export const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
+// The Gemini key is not a client constant: it lives only in the server
+// environment and is used by api/gemini.js.
